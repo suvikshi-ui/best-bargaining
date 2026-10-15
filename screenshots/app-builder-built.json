@@ -1,0 +1,38 @@
+{
+  "url": "http://127.0.0.1:8081/",
+  "viewports": {
+    "desktop": {
+      "width": 1280,
+      "height": 800,
+      "status": 200,
+      "title": "Rainside",
+      "hasCanvas": false,
+      "bodyTextLen": 1018,
+      "bodyTextHash": "74295d4d9ff36dfa46d08e164991a58bf5b829e7202207a79e80bdca3a68cdb6",
+      "bodyTextPrefix": "Rainside. Toys Rainy Night Everyday Owner desk दिन के खिलौने · र",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/app-builder-built.png"
+    },
+    "mobile": {
+      "width": 390,
+      "height": 844,
+      "status": 200,
+      "title": "Rainside",
+      "hasCanvas": false,
+      "bodyTextLen": 939,
+      "bodyTextHash": "032232ebdd0be9c62b9afb5bc6d6486d9970935fe48886aa753f369c28fe2f51",
+      "bodyTextPrefix": "Rainside. दिन के खिलौने · रात की बारिश Toys for daylight. Things",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/app-builder-built-mobile.png"
+    }
+  },
+  "brandWarnings": [],
+  "authWarnings": [],
+  "verdictFile": "/workspace/screenshots/app-builder-built.json",
+  "divergesFromBaseline": false,
+  "baselineReasons": []
+}
