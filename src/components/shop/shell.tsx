@@ -1,8 +1,10 @@
-import { Link, useRouterState } from "@tanstack/react-router";
-import { KeyRound, ShoppingBag, Store } from "lucide-react";
-import { useEffect, useState, type ReactNode } from "react";
+import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
+import { Search, ShoppingBag, Store } from "lucide-react";
+import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { cn } from "@/lib/cn";
 import { useCart } from "@/lib/shop/cart";
+import { CATEGORIES, readCat, type ShopCat } from "@/lib/shop/catalog";
+import { useCurrentUserState } from "@/lib/auth/use-current-user";
 
 function useBagCount() {
   const count = useCart((state) => state.lines.reduce((sum, line) => sum + line.qty, 0));
@@ -11,78 +13,147 @@ function useBagCount() {
   return ready ? count : 0;
 }
 
-function BagLink({ className }: { className?: string }) {
-  const count = useBagCount();
-  return (
-    <Link
-      to="/cart"
-      aria-label={count ? `Bag, ${count} pieces` : "Bag"}
-      className={cn(
-        "relative grid h-11 w-11 place-items-center rounded-full text-ink hover:bg-ink/5",
-        className,
-      )}
-    >
-      <ShoppingBag className="size-5" aria-hidden="true" />
-      {count > 0 && (
-        <span className="absolute top-1 right-1 grid h-5 min-w-5 place-items-center rounded-full bg-clay px-1 text-xs text-paper tabular-nums">
-          {count}
-        </span>
-      )}
-    </Link>
-  );
-}
+const CATS: { id: ShopCat; label: string }[] = [
+  { id: "all", label: "Home" },
+  ...CATEGORIES.map((item) => ({ id: item.id, label: item.label })),
+];
 
 export function ShopShell({ children }: { children: ReactNode }) {
+  const navigate = useNavigate();
   const path = useRouterState({ select: (state) => state.location.pathname });
+  const current = useRouterState({
+    select: (state) => readCat((state.location.search as { cat?: unknown }).cat),
+  });
   const shopOn = path === "/" || path.startsWith("/product");
   const bagOn = path === "/cart";
-  const ownerOn = path === "/studio" || path === "/login";
+  const count = useBagCount();
+  const { user } = useCurrentUserState();
+
+  const [q, setQ] = useState("");
+
+  function search(event: FormEvent) {
+    event.preventDefault();
+    void navigate({ to: "/", search: { cat: "all", q: q.trim() } });
+  }
 
   return (
     <div className="min-h-screen bg-paper text-ink">
-      <header className="sticky top-0 z-30 border-b border-ink/10 bg-paper/90 backdrop-blur">
-        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-4 md:px-8">
-          <Link to="/" search={{ cat: "all" }} className="font-display text-2xl tracking-tight text-ink">
-            Rainside<span className="text-clay">.</span>
+      <div className="bg-ink px-4 py-2 text-center text-xs font-medium text-paper">
+        More savings & faster shopping
+      </div>
+      <header className="sticky top-0 z-30 border-b border-ink/10 bg-paper">
+        <div className="mx-auto flex h-16 max-w-7xl items-center gap-3 px-4 md:px-8">
+          <Link to="/" search={{ cat: "all", q: "" }} className="shrink-0 text-xl font-semibold tracking-tight">
+            Rainside
           </Link>
-          <nav className="hidden items-center gap-6 md:flex" aria-label="Shop">
-            <Link to="/" search={{ cat: "toys" }} className="text-sm text-mist hover:text-ink">
-              Toys
-            </Link>
-            <Link to="/" search={{ cat: "rainy" }} className="text-sm text-mist hover:text-ink">
-              Rainy Night
-            </Link>
-            <Link to="/" search={{ cat: "everyday" }} className="text-sm text-mist hover:text-ink">
-              Everyday
-            </Link>
-            <Link to="/studio" className="text-sm text-ink">
-              Owner desk
-            </Link>
-          </nav>
-          <BagLink />
+          <form onSubmit={search} className="relative min-w-0 flex-1">
+            <label className="sr-only" htmlFor="shop-search">
+              Search products
+            </label>
+            <input
+              id="shop-search"
+              value={q}
+              onChange={(event) => setQ(event.target.value)}
+              placeholder="Search products"
+              className="h-10 w-full rounded-md border border-ink/15 bg-card pr-10 pl-3 text-sm outline-none focus:border-ink"
+            />
+            <button
+              type="submit"
+              aria-label="Search"
+              className="absolute top-0 right-0 grid h-10 w-10 place-items-center text-ink"
+            >
+              <Search className="size-4" aria-hidden="true" />
+            </button>
+          </form>
+          <Link
+            to={user ? "/account" : "/login"}
+            search={user ? undefined : { desk: false }}
+            className="shrink-0 text-sm font-medium"
+          >
+            {user ? "Account" : "Sign in"}
+          </Link>
+          <Link
+            to="/cart"
+            aria-label={count ? `Bag, ${count} pieces` : "Bag"}
+            className="relative grid h-11 w-11 shrink-0 place-items-center"
+          >
+            <ShoppingBag className="size-5" aria-hidden="true" />
+            {count > 0 && (
+              <span className="absolute top-1 right-0 grid h-5 min-w-5 place-items-center rounded-full bg-clay px-1 text-[11px] font-semibold text-white tabular-nums">
+                {count}
+              </span>
+            )}
+          </Link>
         </div>
+        <nav className="overflow-x-auto border-t border-ink/10" aria-label="Categories">
+          <div className="mx-auto flex max-w-7xl gap-6 px-4 md:px-8">
+            {CATS.map((item) => {
+              const on = path === "/" && current === item.id;
+              return (
+                <Link
+                  key={item.id}
+                  to="/"
+                  search={{ cat: item.id, q: "" }}
+                  className={cn(
+                    "shrink-0 border-b-2 py-3 text-sm font-medium",
+                    on ? "border-ink text-ink" : "border-transparent text-mist",
+                  )}
+                >
+                  {item.label}
+                </Link>
+              );
+            })}
+          </div>
+        </nav>
       </header>
-      <main className="mx-auto w-full max-w-6xl px-4 pt-6 pb-28 md:px-8 md:pb-16">{children}</main>
-      <footer className="border-t border-ink/10">
-        <div className="mx-auto max-w-6xl px-4 py-10 md:px-8">
-          <p className="font-display text-2xl text-ink">
-            Rainside<span className="text-clay">.</span>
-          </p>
-          <p className="mt-2 max-w-sm text-sm text-mist">
-            Toys for daylight. Things for rainy nights. Counted, priced, and put on the shelf by the owner.
-          </p>
+      <main className="mx-auto w-full max-w-7xl px-4 pt-4 pb-28 md:px-8 md:pb-12">{children}</main>
+      <footer className="border-t border-ink/10 bg-card pb-24 md:pb-0">
+        <div className="mx-auto grid max-w-7xl gap-8 px-4 py-10 md:grid-cols-3 md:px-8">
+          <div>
+            <p className="text-xs font-semibold tracking-wide uppercase">Shop</p>
+            <div className="mt-3 flex flex-col gap-2 text-sm text-mist">
+              <Link to="/" search={{ cat: "gadgets", q: "" }}>
+                Gadgets
+              </Link>
+              <Link to="/" search={{ cat: "kitchen-essentials", q: "" }}>
+                Kitchen
+              </Link>
+              <Link to="/" search={{ cat: "womens-fashion", q: "" }}>
+                Fashion
+              </Link>
+            </div>
+          </div>
+          <div>
+            <p className="text-xs font-semibold tracking-wide uppercase">Orders</p>
+            <div className="mt-3 flex flex-col gap-2 text-sm text-mist">
+              <Link to="/cart">Your bag</Link>
+              <Link to="/account">Your orders</Link>
+              <p>Sign in before you place an order.</p>
+            </div>
+          </div>
+          <div>
+            <p className="text-xs font-semibold tracking-wide uppercase">Rainside</p>
+            <p className="mt-3 max-w-xs text-sm text-mist">
+              The same shelves as a full home shop: gadgets, kitchen, fashion, kids, and more. Prices in rupees.
+            </p>
+          </div>
         </div>
+        <p className="pb-6 text-center">
+          <Link to="/login" search={{ desk: true }} className="text-[11px] text-mist/70 hover:text-ink">
+            Owner login
+          </Link>
+        </p>
       </footer>
       <nav
         className="fixed inset-x-0 bottom-0 z-30 border-t border-ink/10 bg-paper md:hidden"
         aria-label="Primary"
       >
-        <div className="grid grid-cols-3">
+        <div className="grid grid-cols-2">
           <Link
             to="/"
-            search={{ cat: "all" }}
+            search={{ cat: "all", q: "" }}
             className={cn(
-              "flex h-16 flex-col items-center justify-center gap-1 text-xs",
+              "flex h-14 flex-col items-center justify-center gap-1 text-xs",
               shopOn ? "text-ink" : "text-mist",
             )}
           >
@@ -92,26 +163,15 @@ export function ShopShell({ children }: { children: ReactNode }) {
           <Link
             to="/cart"
             className={cn(
-              "flex h-16 flex-col items-center justify-center gap-1 text-xs",
+              "flex h-14 flex-col items-center justify-center gap-1 text-xs",
               bagOn ? "text-ink" : "text-mist",
             )}
           >
             <ShoppingBag className="size-5" aria-hidden="true" />
             Bag
           </Link>
-          <Link
-            to="/studio"
-            className={cn(
-              "flex h-16 flex-col items-center justify-center gap-1 text-xs",
-              ownerOn ? "text-ink" : "text-mist",
-            )}
-          >
-            <KeyRound className="size-5" aria-hidden="true" />
-            Owner
-          </Link>
         </div>
       </nav>
     </div>
   );
 }
-

@@ -4,6 +4,7 @@ import { getSql } from "@/lib/db";
 import {
   asItems,
   asProduct,
+  customerSchema,
   productWriteSchema,
   type Product,
   type ProductWrite,
@@ -36,10 +37,10 @@ async function ensureOwner(userId: string): Promise<"owner" | "locked"> {
 export const listProducts = createServerFn({ method: "GET" }).handler(async () => {
   const sql = await getSql();
   const rows = await sql<Product>`
-    select id, name, category, price, stock, blurb, image, badge, published
+    select id, name, category, price, compare_at, stock, blurb, image, badge, published
     from products
     where published = true
-    order by case badge when 'best' then 0 when 'new' then 1 else 2 end, id asc
+    order by category, id asc
   `;
   return rows.map(asProduct);
 });
@@ -54,7 +55,7 @@ export const getProduct = createServerFn({ method: "GET" })
     if (id < 1) return null;
     const sql = await getSql();
     const rows = await sql<Product>`
-      select id, name, category, price, stock, blurb, image, badge, published
+      select id, name, category, price, compare_at, stock, blurb, image, badge, published
       from products
       where id = ${id} and published = true
     `;
@@ -70,16 +71,27 @@ export const getStudio = createServerFn({ method: "GET" })
     }
     const sql = await getSql();
     const products = await sql<Product>`
-      select id, name, category, price, stock, blurb, image, badge, published
+      select id, name, category, price, compare_at, stock, blurb, image, badge, published
       from products
       where user_id = ${context.userId}
       order by id desc
     `;
-    const orders = await sql<{ id: number; items: string; total: number; created_at: string }>`
-      select id, items, total, created_at::text as created_at
+    const orders = await sql<{
+      id: number;
+      items: string;
+      total: number;
+      created_at: string;
+      customer_name: string;
+      customer_phone: string;
+      customer_email: string;
+      account_email: string;
+      user_id: string;
+    }>`
+      select id, items, total, created_at::text as created_at,
+        customer_name, customer_phone, customer_email, account_email, user_id
       from orders
       order by id desc
-      limit 12
+      limit 40
     `;
     return {
       role: "owner" as const,
@@ -89,6 +101,11 @@ export const getStudio = createServerFn({ method: "GET" })
         items: asItems(order.items),
         total: Number(order.total),
         createdAt: order.created_at,
+        customerName: order.customer_name ?? "",
+        customerPhone: order.customer_phone ?? "",
+        customerEmail: order.customer_email ?? "",
+        accountEmail: order.account_email ?? "",
+        userId: order.user_id ?? "",
       })),
     };
   });
@@ -116,7 +133,8 @@ export const saveProduct = createServerFn({ method: "POST" })
           blurb = ${data.blurb},
           image = ${data.image},
           badge = ${data.badge},
-          published = ${data.published}
+          published = ${data.published},
+          compare_at = ${data.compareAt > 0 ? data.compareAt : null}
         where id = ${data.id} and user_id = ${context.userId}
         returning id
       `;
@@ -124,12 +142,13 @@ export const saveProduct = createServerFn({ method: "POST" })
       return { id: Number(rows[0].id) };
     }
     const rows = await sql<{ id: number }>`
-      insert into products (user_id, name, category, price, stock, blurb, image, badge, published)
+      insert into products (user_id, name, category, price, compare_at, stock, blurb, image, badge, published)
       values (
         ${context.userId},
         ${data.name},
         ${data.category},
         ${data.price},
+        ${data.compareAt > 0 ? data.compareAt : null},
         ${data.stock},
         ${data.blurb},
         ${data.image},
@@ -185,8 +204,23 @@ function zLines() {
 }
 
 export const placeOrder = createServerFn({ method: "POST" })
-  .validator((raw: unknown) => orderSchema.parse(raw))
-  .handler(async ({ data: lines }) => {
+  .middleware([authMiddleware])
+  .validator((raw: unknown) => {
+    if (!raw || typeof raw !== "object") throw new Error("The bag is empty.");
+    const body = raw as { lines?: unknown; customer?: unknown; accountEmail?: unknown };
+    const lines = orderSchema.parse({ lines: body.lines });
+    const customer = customerSchema.safeParse(body.customer);
+    if (!customer.success) {
+      throw new Error(customer.error.issues[0]?.message ?? "Add the customer details.");
+    }
+    const accountEmail =
+      typeof body.accountEmail === "string" && body.accountEmail.includes("@")
+        ? body.accountEmail.trim().slice(0, 120)
+        : customer.data.email;
+    return { lines, customer: customer.data, accountEmail };
+  })
+  .handler(async ({ context, data }) => {
+    const { lines, customer, accountEmail } = data;
     const sql = await getSql();
     const picked: { id: number; name: string; price: number; qty: number }[] = [];
     for (const line of lines) {
@@ -219,8 +253,16 @@ export const placeOrder = createServerFn({ method: "POST" })
       }
       const total = picked.reduce((sum, line) => sum + line.price * line.qty, 0);
       const inserted = await sql<{ id: number }>`
-        insert into orders (items, total)
-        values (${JSON.stringify(picked)}, ${total})
+        insert into orders (items, total, customer_name, customer_phone, customer_email, account_email, user_id)
+        values (
+          ${JSON.stringify(picked)},
+          ${total},
+          ${customer.name},
+          ${customer.phone},
+          ${customer.email},
+          ${accountEmail},
+          ${context.userId}
+        )
         returning id
       `;
       return {
@@ -234,5 +276,36 @@ export const placeOrder = createServerFn({ method: "POST" })
       }
       throw error;
     }
+  });
+
+export const getMyOrders = createServerFn({ method: "GET" })
+  .middleware([authMiddleware])
+  .handler(async ({ context }) => {
+    const sql = await getSql();
+    const orders = await sql<{
+      id: number;
+      items: string;
+      total: number;
+      created_at: string;
+      customer_name: string;
+      customer_phone: string;
+      customer_email: string;
+    }>`
+      select id, items, total, created_at::text as created_at,
+        customer_name, customer_phone, customer_email
+      from orders
+      where user_id = ${context.userId}
+      order by id desc
+      limit 30
+    `;
+    return orders.map((order) => ({
+      id: Number(order.id),
+      items: asItems(order.items),
+      total: Number(order.total),
+      createdAt: order.created_at,
+      customerName: order.customer_name ?? "",
+      customerPhone: order.customer_phone ?? "",
+      customerEmail: order.customer_email ?? "",
+    }));
   });
 

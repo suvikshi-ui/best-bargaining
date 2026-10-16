@@ -31,17 +31,19 @@ type Draft = {
   image: string;
   badge: "" | "new" | "best";
   published: boolean;
+  compare: string;
 };
 
 const emptyDraft = (): Draft => ({
   name: "",
-  category: "toys",
+  category: "gadgets",
   price: "",
   stock: "1",
   blurb: "",
   image: "",
   badge: "",
   published: true,
+  compare: "",
 });
 
 function Studio() {
@@ -53,7 +55,7 @@ function Studio() {
           <p className="text-sm text-clay">Owner desk</p>
           <h1 className="mt-1 font-display text-5xl leading-none">What you sell</h1>
           <p className="mt-3 max-w-xl text-sm text-mist">
-            Toys, rainy-night pieces, and everyday items. Set the price and कितने items are on the shelf.
+            Gadgets, kitchen, fashion, and every other shelf. Set the price and कितने items are on the shelf.
           </p>
         </div>
         <div className="min-h-10">{user ? <UserButton /> : null}</div>
@@ -135,8 +137,7 @@ function Desk() {
   }
 
   const products = studio.data.products;
-  const toys = products.filter((product) => product.category === "toys").length;
-  const rainy = products.filter((product) => product.category === "rainy").length;
+  const departments = new Set(products.map((product) => product.category)).size;
   const low = products.filter((product) => product.published && product.stock <= 3).length;
 
   function submit() {
@@ -145,6 +146,7 @@ function Desk() {
       id: draft.id,
       price: Math.round(Number(draft.price)),
       stock: Math.round(Number(draft.stock)),
+      compareAt: draft.compare.trim() === "" ? 0 : Math.round(Number(draft.compare)),
     });
     if (!parsed.success) {
       setMessage(parsed.error.issues[0]?.message ?? "Check the details.");
@@ -167,6 +169,7 @@ function Desk() {
       image: product.image,
       badge: product.badge,
       published: product.published,
+      compare: product.compareAt > 0 ? String(product.compareAt) : "",
     });
     document.getElementById("desk-form")?.scrollIntoView({ block: "start" });
   }
@@ -186,6 +189,7 @@ function Desk() {
           image: product.image,
           badge: product.badge,
           published: product.published,
+          compareAt: product.compareAt,
         },
       });
       await refresh();
@@ -197,8 +201,8 @@ function Desk() {
   return (
     <div>
       <dl className="grid grid-cols-3 gap-3">
-        <Stat label="Toys" value={String(toys)} />
-        <Stat label="Rainy night" value={String(rainy)} />
+        <Stat label="Pieces" value={String(products.length)} />
+        <Stat label="Departments" value={String(departments)} />
         <Stat label="Low stock" value={String(low)} />
       </dl>
 
@@ -233,7 +237,7 @@ function Desk() {
             >
               {CATEGORIES.map((category) => (
                 <option key={category.id} value={category.id}>
-                  {category.label} — {category.hindi}
+                  {category.label}
                 </option>
               ))}
             </select>
@@ -246,6 +250,16 @@ function Desk() {
               onChange={(event) => setDraft({ ...draft, price: event.target.value })}
               className={inputClass}
               required
+            />
+          </Field>
+          <Field label="MRP — was price, optional" htmlFor="piece-mrp">
+            <input
+              id="piece-mrp"
+              inputMode="numeric"
+              value={draft.compare}
+              onChange={(event) => setDraft({ ...draft, compare: event.target.value })}
+              className={inputClass}
+              placeholder="Blank if no offer"
             />
           </Field>
           <Field label="Stock — कितने items" htmlFor="piece-stock">
@@ -432,7 +446,17 @@ function Desk() {
               <p className="font-medium">
                 Order #{order.id} · <span className="tabular-nums">{inr(order.total)}</span>
               </p>
-              <p className="text-sm text-mist">
+              {order.customerName ? (
+                <div className="mt-2 text-sm">
+                  <p>{order.customerName}</p>
+                  <p className="tabular-nums">{order.customerPhone}</p>
+                  <p>{order.customerEmail}</p>
+                  <p className="text-mist">Login: {order.accountEmail || order.customerEmail}</p>
+                </div>
+              ) : (
+                <p className="mt-2 text-sm text-mist">No contact on this order.</p>
+              )}
+              <p className="mt-2 text-sm text-mist">
                 {order.items.map((item) => `${item.qty} × ${item.name}`).join(", ")}
               </p>
             </li>
@@ -454,6 +478,7 @@ function Desk() {
         image: product.image,
         badge: product.badge,
         published,
+        compareAt: product.compareAt,
       },
     });
     await refresh();

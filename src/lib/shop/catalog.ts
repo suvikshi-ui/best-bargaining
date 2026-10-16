@@ -1,39 +1,59 @@
 import { z } from "zod";
 
 export const CATEGORIES = [
-  {
-    id: "toys",
-    label: "Toys",
-    hindi: "खिलौने",
-    note: "Things small hands keep.",
-  },
-  {
-    id: "rainy",
-    label: "Rainy Night",
-    hindi: "बारिश की रात",
-    note: "Light, wool, a cup that stays warm.",
-  },
-  {
-    id: "everyday",
-    label: "Everyday",
-    hindi: "रोज़मर्रा",
-    note: "The pieces you reach for twice.",
-  },
+  { id: "gadgets", label: "Gadgets", hindi: "", note: "Watches, chargers, cables, and small electronics." },
+  { id: "kitchen-essentials", label: "Kitchen", hindi: "", note: "Cooking tools, gadgets, and storage." },
+  { id: "mobile-accessories", label: "Mobile", hindi: "", note: "Cases, stands, grips, and chargers." },
+  { id: "womens-fashion", label: "Fashion", hindi: "", note: "Ethnic wear, dresses, and everyday clothes." },
+  { id: "mens-grooming", label: "Grooming", hindi: "", note: "Trimmers, kits, and shaving." },
+  { id: "beauty", label: "Beauty", hindi: "", note: "Skin tools, hair, and self-care." },
+  { id: "accessories", label: "Accessories", hindi: "", note: "Belts, caps, shades, and everyday carry." },
+  { id: "jewellery", label: "Jewellery", hindi: "", note: "Chains, rings, and everyday gold-tone pieces." },
+  { id: "kids-products", label: "Kids", hindi: "", note: "Care, feeding, and toys." },
+  { id: "led-lights-2", label: "LED Lights", hindi: "", note: "Strips, lamps, and wall light." },
+  { id: "car-bike", label: "Car & Bike", hindi: "", note: "Holders, lights, and organisers for the ride." },
+  { id: "fitness", label: "Fitness", hindi: "", note: "Bands, bags, and home workout tools." },
+  { id: "wellness-essentials", label: "Wellness", hindi: "", note: "Sleep, posture, and massage." },
+  { id: "work-from-home", label: "Work From Home", hindi: "", note: "Stands, light, and desk order." },
+  { id: "diy-tools", label: "DIY Tools", hindi: "", note: "Hooks, kits, and repair tools." },
+  { id: "gaming", label: "Gaming", hindi: "", note: "Mouse, pads, and headset gear." },
+  { id: "travel", label: "Travel", hindi: "", note: "Bags, bottles, and neck pillows." },
+  { id: "gifts", label: "Gifts", hindi: "", note: "Pens, notebooks, and festival sets." },
+  { id: "eco-friendly", label: "Eco-Friendly", hindi: "", note: "Bamboo, cloth bags, and reusable pieces." },
+  { id: "pet-care", label: "Pet Care", hindi: "", note: "Bowls, clothes, and toys." },
+  { id: "fabric", label: "Fabric", hindi: "", note: "Cotton, silk, rayon, and polyester." },
+  { id: "sewing-machine", label: "Sewing", hindi: "", note: "Domestic and industrial machines." },
+  { id: "cooked-foods", label: "Cooked Food", hindi: "", note: "Veg and non-veg meals, packed to order." },
 ] as const;
 
 export type CategoryId = (typeof CATEGORIES)[number]["id"];
 export type ShopCat = CategoryId | "all";
 
 export const PHOTOS = [
-  { src: "/products/rainbow.jpg", label: "Cedar arches" },
-  { src: "/products/rabbit.jpg", label: "Moon rabbit" },
-  { src: "/products/train.jpg", label: "Wooden train" },
-  { src: "/products/candle.jpg", label: "Amber candle" },
-  { src: "/products/throw.jpg", label: "Wool throw" },
-  { src: "/products/mug.jpg", label: "Rain cup" },
-  { src: "/products/lamp.jpg", label: "Brass lamp" },
-  { src: "/products/tote.jpg", label: "Market tote" },
-  { src: "/products/bowl.jpg", label: "Clay bowl" },
+  { src: "/products/earbuds.jpg", label: "Earbuds" },
+  { src: "/products/charger.jpg", label: "Charger" },
+  { src: "/products/watch.jpg", label: "Watch" },
+  { src: "/products/belt.jpg", label: "Belt" },
+  { src: "/products/sunglasses.jpg", label: "Sunglasses" },
+  { src: "/products/roller.jpg", label: "Face roller" },
+  { src: "/products/holder.jpg", label: "Phone holder" },
+  { src: "/products/kitchen.jpg", label: "Kitchen tools" },
+  { src: "/products/led.jpg", label: "LED strip" },
+  { src: "/products/baby.jpg", label: "Baby bottle" },
+  { src: "/products/necklace.jpg", label: "Necklace" },
+  { src: "/products/mouse.jpg", label: "Gaming mouse" },
+  { src: "/products/bands.jpg", label: "Bands" },
+  { src: "/products/trimmer.jpg", label: "Trimmer" },
+  { src: "/products/pet.jpg", label: "Pet bowl" },
+  { src: "/products/pillow.jpg", label: "Neck pillow" },
+  { src: "/products/notebook.jpg", label: "Notebook" },
+  { src: "/products/fabric.jpg", label: "Fabric" },
+  { src: "/products/sew.jpg", label: "Sewing machine" },
+  { src: "/products/stand.jpg", label: "Laptop stand" },
+  { src: "/products/lamp.jpg", label: "Night lamp" },
+  { src: "/products/case.jpg", label: "Phone case" },
+  { src: "/products/bamboo.jpg", label: "Bamboo set" },
+  { src: "/products/tiffin.jpg", label: "Tiffin" },
 ] as const;
 
 export const HERO = "/products/hero.jpg";
@@ -50,6 +70,7 @@ export type Product = {
   image: string;
   badge: "" | "new" | "best";
   published: boolean;
+  compareAt: number;
 };
 
 export type OrderItem = {
@@ -64,12 +85,33 @@ export type ShopOrder = {
   items: OrderItem[];
   total: number;
   createdAt: string;
+  customerName: string;
+  customerPhone: string;
+  customerEmail: string;
+  accountEmail: string;
+  userId: string;
 };
+
+export const customerSchema = z.object({
+  name: z.string().trim().min(1, "Add the customer name.").max(80, "Keep the name shorter."),
+  phone: z
+    .string()
+    .trim()
+    .min(10, "Add a mobile number.")
+    .max(16, "That mobile number is too long.")
+    .refine((value) => {
+      const digits = value.replace(/\D/g, "");
+      return digits.length >= 10 && digits.length <= 13;
+    }, "Add a 10-digit mobile number."),
+  email: z.string().trim().email("Add an email.").max(120, "That email is too long."),
+});
+
+export type CustomerDetails = z.infer<typeof customerSchema>;
 
 export const productWriteSchema = z.object({
   id: z.number().int().positive().optional(),
   name: z.string().trim().min(1, "Name the piece.").max(80, "Keep the name shorter."),
-  category: z.enum(["toys", "rainy", "everyday"]),
+  category: z.string().refine((value): value is CategoryId => CATEGORIES.some((item) => item.id === value), "Pick a department."),
   price: z.number().int().min(1, "Add a price in rupees.").max(5_000_000),
   stock: z.number().int().min(0, "Stock cannot be negative.").max(100_000),
   blurb: z.string().trim().max(400, "Keep the note under 400 characters."),
@@ -87,12 +129,25 @@ export const productWriteSchema = z.object({
     ),
   badge: z.enum(["", "new", "best"]),
   published: z.boolean(),
+  compareAt: z.number().int().min(0).max(5_000_000),
 });
 
 export type ProductWrite = z.infer<typeof productWriteSchema>;
 
+export function readQuery(value: unknown) {
+  if (typeof value !== "string") return "";
+  return value.trim().slice(0, 60);
+}
+
+export function offPercent(price: number, compareAt: number) {
+  if (!compareAt || compareAt <= price) return 0;
+  return Math.round((1 - price / compareAt) * 100);
+}
+
 export function readCat(value: unknown): ShopCat {
-  if (value === "toys" || value === "rainy" || value === "everyday") return value;
+  if (typeof value === "string" && CATEGORIES.some((item) => item.id === value)) {
+    return value as CategoryId;
+  }
   return "all";
 }
 
@@ -110,12 +165,10 @@ export function inr(value: number) {
   return money.format(value);
 }
 
-export function asProduct(row: Product): Product {
+export function asProduct(row: Product & { compare_at?: number | null }): Product {
   const badge = row.badge === "new" || row.badge === "best" ? row.badge : "";
-  const category =
-    row.category === "toys" || row.category === "rainy" || row.category === "everyday"
-      ? row.category
-      : "everyday";
+  const known = CATEGORIES.some((item) => item.id === row.category);
+  const category = known ? (row.category as CategoryId) : CATEGORIES[0].id;
   return {
     id: Number(row.id),
     name: row.name,
@@ -126,6 +179,7 @@ export function asProduct(row: Product): Product {
     image: row.image,
     badge,
     published: Boolean(row.published),
+    compareAt: Math.max(0, Number(row.compareAt || row.compare_at || 0)),
   };
 }
 

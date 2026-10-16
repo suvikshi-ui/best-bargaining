@@ -12,7 +12,7 @@ function keepSessionToken(token: string | null | undefined) {
   }
 }
 
-export function OwnerSignButtons() {
+export function OwnerSignButtons({ redirectTo = "/account" }: { redirectTo?: string }) {
   const [mode, setMode] = useState<"in" | "up">("in");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -34,13 +34,13 @@ export function OwnerSignButtons() {
           ? await authClient.signIn.email({
               email: email.trim(),
               password,
-              callbackURL: "/studio",
+              callbackURL: redirectTo,
             })
           : await authClient.signUp.email({
               email: email.trim(),
               password,
-              name: name.trim() || "Shop owner",
-              callbackURL: "/studio",
+              name: name.trim() || (redirectTo === "/studio" ? "Shop owner" : "Customer"),
+              callbackURL: redirectTo,
             });
       if (result.error) {
         setError(result.error.message ?? "Could not sign in.");
@@ -102,7 +102,7 @@ export function OwnerSignButtons() {
           disabled={busy}
           className="h-12 rounded-full bg-clay text-sm text-paper transition-transform duration-150 active:scale-[0.96] disabled:opacity-40"
         >
-          {busy ? "Please wait…" : mode === "in" ? "Log in" : "Create login"}
+          {busy ? "Please wait…" : mode === "in" ? "Log in" : "Create account"}
         </button>
         <button
           type="button"
@@ -112,7 +112,7 @@ export function OwnerSignButtons() {
           }}
           className="h-11 text-sm text-mist"
         >
-          {mode === "in" ? "नया login बनाएं" : "Already have a login? Log in"}
+          {mode === "in" ? "Create a new account" : "Already have a login? Log in"}
         </button>
       </form>
       <div className="mt-4 flex flex-col gap-2">
@@ -120,7 +120,7 @@ export function OwnerSignButtons() {
           <button
             key={provider.providerId}
             type="button"
-            onClick={() => signIn(provider.providerId, { callbackURL: "/studio" })}
+            onClick={() => signIn(provider.providerId, { callbackURL: redirectTo })}
             className="h-12 w-full rounded-full border border-ink/15 bg-card text-sm font-medium text-ink transition-transform duration-150 active:scale-[0.96]"
           >
             Continue with {provider.label}

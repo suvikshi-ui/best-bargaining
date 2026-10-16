@@ -4,7 +4,7 @@ import { useState } from "react";
 import { ShopShell } from "@/components/shop/shell";
 import { useCart } from "@/lib/shop/cart";
 import { getProduct } from "@/lib/shop/api";
-import { categoryOf, inr } from "@/lib/shop/catalog";
+import { categoryOf, inr, offPercent } from "@/lib/shop/catalog";
 
 export const Route = createFileRoute("/product/$id")({
   loader: ({ params }) => getProduct({ data: Number(params.id) }),
@@ -29,7 +29,7 @@ function Piece() {
     return (
       <ShopShell>
         <h1 className="font-display text-4xl">That piece is not on the shelf.</h1>
-        <Link to="/" search={{ cat: "all" }} className="mt-4 inline-flex h-11 items-center text-clay">
+        <Link to="/" search={{ cat: "all", q: "" }} className="mt-4 inline-flex h-11 items-center text-sm font-medium">
           Back to the shop
         </Link>
       </ShopShell>
@@ -42,11 +42,11 @@ function Piece() {
 
   return (
     <ShopShell>
-      <Link to="/" search={{ cat: "all" }} className="text-sm text-mist hover:text-ink">
-        All pieces
+      <Link to="/" search={{ cat: "all", q: "" }} className="text-sm text-mist hover:text-ink">
+        Home
       </Link>
-      <div className="mt-4 grid items-start gap-8 md:grid-cols-2">
-        <div className="overflow-hidden rounded-3xl bg-card">
+      <div className="mt-4 grid items-start gap-6 md:grid-cols-2">
+        <div className="overflow-hidden border border-ink/10 bg-card">
           <img
             src={product.image}
             alt={product.name}
@@ -54,12 +54,22 @@ function Piece() {
           />
         </div>
         <div>
-          <p className="text-sm text-clay">
-            {category.hindi} · {category.label}
+          <p className="text-sm text-mist">
+            {category.label} · {category.hindi}
           </p>
-          <h1 className="mt-2 font-display text-5xl leading-none">{product.name}</h1>
-          <p className="mt-4 max-w-md text-mist">{product.blurb}</p>
-          <p className="mt-6 font-display text-3xl tabular-nums">{inr(product.price)}</p>
+          <h1 className="mt-2 text-3xl font-semibold leading-tight md:text-4xl">{product.name}</h1>
+          <p className="mt-3 max-w-md text-sm text-mist">{product.blurb}</p>
+          <div className="mt-5 flex flex-wrap items-center gap-3">
+            <p className="text-3xl font-semibold tabular-nums">{inr(product.price)}</p>
+            {offPercent(product.price, product.compareAt) > 0 && (
+              <>
+                <p className="text-sm text-mist line-through tabular-nums">{inr(product.compareAt)}</p>
+                <p className="bg-clay px-2 py-1 text-xs font-semibold text-white">
+                  {offPercent(product.price, product.compareAt)}% OFF
+                </p>
+              </>
+            )}
+          </div>
           <p className="mt-1 text-sm text-mist">
             {gone ? "Gone for now." : `${product.stock} in the shop.`}
           </p>
@@ -92,7 +102,7 @@ function Piece() {
               setHeld(true);
               void queryClient.invalidateQueries({ queryKey: ["products"] });
             }}
-            className="mt-6 h-12 w-full rounded-full bg-clay px-6 text-sm text-paper transition-transform duration-150 active:scale-[0.96] disabled:opacity-40 md:w-auto"
+            className="mt-6 h-12 w-full bg-ink px-6 text-sm font-semibold text-paper disabled:opacity-40 md:w-auto"
           >
             {gone ? "Sold out" : held ? "In the bag" : "Add to bag"}
           </button>

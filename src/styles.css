@@ -2,13 +2,13 @@
 
 @theme {
   --font-sans: "Outfit", ui-sans-serif, system-ui, sans-serif;
-  --font-display: "Fraunces", ui-serif, Georgia, serif;
+  --font-display: "Outfit", ui-sans-serif, system-ui, sans-serif;
 
-  --color-paper: #f4efe7;
-  --color-ink: #1b2421;
-  --color-clay: #7c3418;
-  --color-mist: #6d655c;
-  --color-card: #fffaf3;
+  --color-paper: #ffffff;
+  --color-ink: #1a1a1a;
+  --color-clay: #f16026;
+  --color-mist: #6b6b6b;
+  --color-card: #f6f6f6;
 }
 
 @layer base {

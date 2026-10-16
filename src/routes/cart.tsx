@@ -2,9 +2,11 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { ShopShell } from "@/components/shop/shell";
+import { OwnerSignButtons } from "@/components/shop/sign-buttons";
 import { placeOrder, listProducts } from "@/lib/shop/api";
+import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { useCart } from "@/lib/shop/cart";
-import { inr, type OrderItem } from "@/lib/shop/catalog";
+import { inr, customerSchema, type OrderItem } from "@/lib/shop/catalog";
 
 export const Route = createFileRoute("/cart")({
   loader: () => listProducts(),
@@ -15,7 +17,9 @@ type Receipt = {
   id: number;
   total: number;
   lines: OrderItem[];
-  note: string;
+  name: string;
+  phone: string;
+  email: string;
 };
 
 const RECEIPT_KEY = "rainside-receipt";
@@ -32,8 +36,11 @@ function Bag() {
   const setQty = useCart((state) => state.setQty);
   const remove = useCart((state) => state.remove);
   const clear = useCart((state) => state.clear);
+  const { user, isPending: userPending } = useCurrentUserState();
   const [ready, setReady] = useState(false);
-  const [note, setNote] = useState("");
+  const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [receipt, setReceipt] = useState<Receipt | null>(null);
@@ -49,6 +56,12 @@ function Bag() {
     }
   }, []);
 
+  useEffect(() => {
+    if (!user) return;
+    setName((value) => value || user.displayName || "");
+    setEmail((value) => value || user.primaryEmail || "");
+  }, [user]);
+
   const rows = lines
     .map((line) => {
       const product = products.data.find((item) => item.id === line.id);
@@ -62,19 +75,38 @@ function Bag() {
     setBusy(true);
     setError("");
     try {
+      if (!user) {
+        setError("Sign in before you place the order.");
+        setBusy(false);
+        return;
+      }
+      const customer = customerSchema.safeParse({ name, phone, email });
+      if (!customer.success) {
+        setError(customer.error.issues[0]?.message ?? "Add the customer details.");
+        setBusy(false);
+        return;
+      }
       const result = await placeOrder({
-        data: { lines: rows.map((row) => ({ id: row.line.id, qty: row.line.qty })) },
+        data: {
+          lines: rows.map((row) => ({ id: row.line.id, qty: row.line.qty })),
+          customer: customer.data,
+          accountEmail: user.primaryEmail || customer.data.email,
+        },
       });
       const next: Receipt = {
         id: result.id,
         total: result.total,
         lines: result.lines,
-        note: note.trim(),
+        name: customer.data.name,
+        phone: customer.data.phone,
+        email: customer.data.email,
       };
       sessionStorage.setItem(RECEIPT_KEY, JSON.stringify(next));
       setReceipt(next);
       clear();
-      setNote("");
+      setName("");
+      setPhone("");
+      setEmail("");
       await queryClient.invalidateQueries({ queryKey: ["products"] });
     } catch (err) {
       setError(err instanceof Error ? err.message : "The order did not go through.");
@@ -87,7 +119,7 @@ function Bag() {
     <ShopShell>
       <h1 className="font-display text-5xl leading-none">Bag</h1>
       <p className="mt-2 max-w-md text-sm text-mist">
-        Checkout reserves the pieces and updates the count. Your name stays on this phone.
+        Sign in, then add your name, mobile, and email. The order stays on that login.
       </p>
 
       {receipt && ready && lines.length === 0 && (
@@ -102,8 +134,14 @@ function Bag() {
             ))}
           </ul>
           <p className="mt-4 font-display text-2xl tabular-nums">{inr(receipt.total)}</p>
-          {receipt.note && <p className="mt-3 text-sm text-paper/70">Your note: {receipt.note}</p>}
-          <p className="mt-3 text-sm text-paper/70">Tell the shop this number when you pay.</p>
+          {receipt.name ? (
+            <>
+              <p className="mt-3 text-sm text-paper/80">{receipt.name}</p>
+              <p className="text-sm text-paper/70">{receipt.phone}</p>
+              <p className="text-sm text-paper/70">{receipt.email}</p>
+            </>
+          ) : null}
+          <p className="mt-3 text-sm text-paper/70">The shop has these details with the order.</p>
         </section>
       )}
 
@@ -118,7 +156,7 @@ function Bag() {
           )}
           <Link
             to="/"
-            search={{ cat: "all" }}
+            search={{ cat: "all", q: "" }}
             className="mt-4 inline-flex h-12 items-center rounded-full bg-ink px-5 text-sm text-paper"
           >
             Shop the shelf
@@ -183,13 +221,50 @@ function Bag() {
           <aside className="h-fit rounded-3xl bg-card p-5">
             <p className="text-sm text-mist">Total</p>
             <p className="font-display text-4xl tabular-nums">{inr(total)}</p>
-            <label className="mt-5 block text-sm text-mist" htmlFor="bag-note">
-              Name or phone — only on this phone, not saved by the shop
+            {userPending ? (
+              <div className="mt-4 h-24 animate-pulse bg-paper" />
+            ) : !user ? (
+              <div className="mt-4">
+                <p className="mb-3 text-sm text-mist">Sign in to place this order. Guest checkout is off.</p>
+                <OwnerSignButtons redirectTo="/cart" />
+              </div>
+            ) : (
+              <>
+            <p className="mt-4 text-xs text-mist">Logged in as {user.primaryEmail}</p>
+            <label className="mt-3 block text-sm text-mist" htmlFor="customer-name">
+              Customer name
             </label>
             <input
-              id="bag-note"
-              value={note}
-              onChange={(event) => setNote(event.target.value.slice(0, 80))}
+              id="customer-name"
+              required
+              autoComplete="name"
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              className="mt-2 h-11 w-full rounded-2xl border border-ink/15 bg-paper px-3 text-sm outline-none focus:border-clay"
+            />
+            <label className="mt-3 block text-sm text-mist" htmlFor="customer-phone">
+              Mobile number
+            </label>
+            <input
+              id="customer-phone"
+              required
+              type="tel"
+              inputMode="tel"
+              autoComplete="tel"
+              value={phone}
+              onChange={(event) => setPhone(event.target.value)}
+              className="mt-2 h-11 w-full rounded-2xl border border-ink/15 bg-paper px-3 text-sm outline-none focus:border-clay"
+            />
+            <label className="mt-3 block text-sm text-mist" htmlFor="customer-email">
+              Email
+            </label>
+            <input
+              id="customer-email"
+              required
+              type="email"
+              autoComplete="email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
               className="mt-2 h-11 w-full rounded-2xl border border-ink/15 bg-paper px-3 text-sm outline-none focus:border-clay"
             />
             {error && (
@@ -205,6 +280,8 @@ function Bag() {
             >
               {busy ? "Reserving…" : "Place order"}
             </button>
+              </>
+            )}
           </aside>
         </div>
       )}
