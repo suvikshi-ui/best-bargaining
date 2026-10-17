@@ -108,6 +108,7 @@ const LOCAL_DEV_ORIGINS: string[] = [
 // returns "Invalid origin".
 const vercelHostnames = [
   "rainside-shop.vercel.app",
+  "rainside-shop-*-hotel-status.vercel.app",
   env("VERCEL_URL"),
   env("VERCEL_PROJECT_PRODUCTION_URL"),
   env("VERCEL_BRANCH_URL"),
