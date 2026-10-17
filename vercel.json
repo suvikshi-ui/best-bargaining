@@ -1,4 +1,6 @@
 {
-  "installCommand": "npm install --omit=dev --no-audit --no-fund",
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "tanstack-start",
+  "installCommand": "npm install --omit=dev --no-audit --no-fund --cache-dir /tmp/npm-cache",
   "buildCommand": "npm run build"
 }
