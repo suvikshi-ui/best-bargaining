@@ -103,27 +103,48 @@ const LOCAL_DEV_ORIGINS: string[] = [
   "http://127.0.0.1:8080",
   "http://[::1]:8080",
 ];
+// Vercel sets these per deployment. The page the visitor opens (the stable
+// shop domain, or a one-off deploy host) must be trusted or email sign-up
+// returns "Invalid origin".
+const vercelHostnames = [
+  "rainside-shop.vercel.app",
+  env("VERCEL_URL"),
+  env("VERCEL_PROJECT_PRODUCTION_URL"),
+  env("VERCEL_BRANCH_URL"),
+]
+  .filter((host): host is string => Boolean(host))
+  .map((host) => host.replace(/^https?:\/\//, "").replace(/\/+$/, ""));
 const baseURL = explicitBaseURL ?? {
   // Include loopback hosts so dynamic baseURL resolves for local email/password
   // (not only the preview wildcard).
-  allowedHosts: [...previewAllowedHosts, "localhost", "127.0.0.1", "[::1]"],
+  allowedHosts: [
+    ...previewAllowedHosts,
+    "localhost",
+    "127.0.0.1",
+    "[::1]",
+    ...vercelHostnames,
+  ],
   // `auto` → trust both http:// and https:// expansions of allowedHosts
   // (preview is https; local dev is http).
   protocol: "auto" as const,
   fallback: "http://localhost:8080",
 };
 
+const vercelOrigins = vercelHostnames.flatMap((host) => [`https://${host}`, `http://${host}`]);
 // Origins Better Auth accepts on credentialed POSTs (sign-up/sign-in, etc.).
 // Missing entries here surface as FORBIDDEN "Invalid origin".
-const trustedOrigins: string[] = explicitBaseURL
-  ? [explicitBaseURL, ...LOCAL_DEV_ORIGINS]
-  : [
-      // Host wildcards (matched against Origin's host)
-      ...previewAllowedHosts,
-      // Full-origin wildcards (matched against Origin)
-      ...previewAllowedHosts.flatMap((host) => [`https://${host}`, `http://${host}`]),
-      ...LOCAL_DEV_ORIGINS,
-    ];
+const trustedOrigins: string[] = [
+  ...(explicitBaseURL
+    ? [explicitBaseURL, ...LOCAL_DEV_ORIGINS]
+    : [
+        // Host wildcards (matched against Origin's host)
+        ...previewAllowedHosts,
+        // Full-origin wildcards (matched against Origin)
+        ...previewAllowedHosts.flatMap((host) => [`https://${host}`, `http://${host}`]),
+        ...LOCAL_DEV_ORIGINS,
+      ]),
+  ...vercelOrigins,
+];
 
 const databaseUrl = env("DATABASE_URL");
 
