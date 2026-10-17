@@ -9,6 +9,7 @@ type CartState = {
   setQty: (id: number, qty: number, stock: number) => void;
   remove: (id: number) => void;
   clear: () => void;
+  replace: (lines: Line[]) => void;
 };
 
 export const useCart = create<CartState>()(
@@ -40,6 +41,7 @@ export const useCart = create<CartState>()(
       },
       remove: (id) => set({ lines: get().lines.filter((line) => line.id !== id) }),
       clear: () => set({ lines: [] }),
+      replace: (lines) => set({ lines }),
     }),
     { name: "rainside-bag" },
   ),

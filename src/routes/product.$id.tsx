@@ -2,6 +2,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { ShopShell } from "@/components/shop/shell";
+import { OwnerEdit } from "@/components/shop/owner-edit";
 import { useCart } from "@/lib/shop/cart";
 import { getProduct } from "@/lib/shop/api";
 import { categoryOf, inr, offPercent } from "@/lib/shop/catalog";
@@ -57,7 +58,10 @@ function Piece() {
           <p className="text-sm text-mist">
             {category.label} · {category.hindi}
           </p>
-          <h1 className="mt-2 text-3xl font-semibold leading-tight md:text-4xl">{product.name}</h1>
+          <div className="flex items-start justify-between gap-3">
+            <h1 className="mt-2 text-3xl font-semibold leading-tight md:text-4xl">{product.name}</h1>
+            <OwnerEdit piece={product.id} label="Edit product" />
+          </div>
           <p className="mt-3 max-w-md text-sm text-mist">{product.blurb}</p>
           <div className="mt-5 flex flex-wrap items-center gap-3">
             <p className="text-3xl font-semibold tabular-nums">{inr(product.price)}</p>

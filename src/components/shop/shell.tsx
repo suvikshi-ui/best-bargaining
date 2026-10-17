@@ -1,8 +1,9 @@
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
-import { Search, ShoppingBag, Store } from "lucide-react";
+import { Search, ShoppingBag, Store, UserRound } from "lucide-react";
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { cn } from "@/lib/cn";
 import { useCart } from "@/lib/shop/cart";
+import { BagSync } from "@/components/shop/bag-sync";
 import { CATEGORIES, readCat, type ShopCat } from "@/lib/shop/catalog";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 
@@ -26,6 +27,7 @@ export function ShopShell({ children }: { children: ReactNode }) {
   });
   const shopOn = path === "/" || path.startsWith("/product");
   const bagOn = path === "/cart";
+  const accountOn = path === "/account" || path === "/login";
   const count = useBagCount();
   const { user } = useCurrentUserState();
 
@@ -38,6 +40,7 @@ export function ShopShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="min-h-screen bg-paper text-ink">
+      <BagSync />
       <div className="bg-ink px-4 py-2 text-center text-xs font-medium text-paper">
         More savings & faster shopping
       </div>
@@ -148,7 +151,7 @@ export function ShopShell({ children }: { children: ReactNode }) {
         className="fixed inset-x-0 bottom-0 z-30 border-t border-ink/10 bg-paper md:hidden"
         aria-label="Primary"
       >
-        <div className="grid grid-cols-2">
+        <div className="grid grid-cols-3">
           <Link
             to="/"
             search={{ cat: "all", q: "" }}
@@ -169,6 +172,17 @@ export function ShopShell({ children }: { children: ReactNode }) {
           >
             <ShoppingBag className="size-5" aria-hidden="true" />
             Bag
+          </Link>
+          <Link
+            to={user ? "/account" : "/login"}
+            search={user ? undefined : { desk: false }}
+            className={cn(
+              "flex h-14 flex-col items-center justify-center gap-1 text-xs",
+              accountOn ? "text-ink" : "text-mist",
+            )}
+          >
+            <UserRound className="size-5" aria-hidden="true" />
+            {user ? "Account" : "Sign in"}
           </Link>
         </div>
       </nav>

@@ -1,11 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { OwnerSignButtons } from "@/components/shop/sign-buttons";
 import { ShopShell } from "@/components/shop/shell";
 import { UserButton } from "@/lib/auth/gates";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
-import { deleteProduct, getStudio, saveProduct } from "@/lib/shop/api";
+import { deleteProduct, getPages, getStudio, savePage, saveProduct } from "@/lib/shop/api";
 import {
   CATEGORIES,
   PHOTOS,
@@ -18,6 +18,10 @@ import {
 } from "@/lib/shop/catalog";
 
 export const Route = createFileRoute("/studio")({
+  validateSearch: (search: Record<string, unknown>) => {
+    const piece = typeof search.piece === "number" ? search.piece : Number(search.piece);
+    return { piece: Number.isInteger(piece) && piece > 0 ? piece : 0 };
+  },
   component: Studio,
 });
 
@@ -87,6 +91,8 @@ function Desk() {
   const [draft, setDraft] = useState<Draft>(emptyDraft);
   const [message, setMessage] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const { piece } = Route.useSearch();
+  const opened = useRef(0);
 
   async function refresh() {
     await queryClient.invalidateQueries({ queryKey: ["studio"] });
@@ -198,6 +204,41 @@ function Desk() {
     }
   }
 
+  useEffect(() => {
+    if (!piece || opened.current === piece || studio.data?.role !== "owner") return;
+    const product = studio.data.products.find((item) => item.id === piece);
+    if (!product) return;
+    opened.current = piece;
+    edit(product);
+  }, [piece, studio.data]);
+
+  async function replacePhoto(product: Product, file: File | undefined) {
+    if (!file) return;
+    setMessage("");
+    try {
+      const image = await compressPhoto(file);
+      await saveProduct({
+        data: {
+          id: product.id,
+          name: product.name,
+          category: product.category,
+          price: product.price,
+          stock: product.stock,
+          blurb: product.blurb,
+          image,
+          badge: product.badge,
+          published: product.published,
+          compareAt: product.compareAt,
+        },
+      });
+      if (draft.id === product.id) setDraft({ ...draft, image });
+      setMessage("Photo updated.");
+      await refresh();
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "Could not update the photo.");
+    }
+  }
+
   return (
     <div>
       <dl className="grid grid-cols-3 gap-3">
@@ -205,6 +246,8 @@ function Desk() {
         <Stat label="Departments" value={String(departments)} />
         <Stat label="Low stock" value={String(low)} />
       </dl>
+
+      <SiteEditor />
 
       <form
         id="desk-form"
@@ -312,6 +355,15 @@ function Desk() {
           onImage={(image) => setDraft({ ...draft, image })}
           onError={setMessage}
         />
+        {draft.image ? (
+          <button
+            type="button"
+            onClick={() => setDraft({ ...draft, image: PHOTOS[0].src })}
+            className="mt-2 h-11 text-sm text-clay"
+          >
+            Clear photo
+          </button>
+        ) : null}
         <p className="mt-3 text-sm text-mist">Or use a shelf photo</p>
         <div className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-5">
           {PHOTOS.map((photo) => (
@@ -419,6 +471,19 @@ function Desk() {
                 <button type="button" onClick={() => edit(product)} className="h-11 px-3 text-sm">
                   Edit
                 </button>
+                <label className="inline-flex h-11 cursor-pointer items-center px-3 text-sm">
+                  Change photo
+                  <input
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    className="sr-only"
+                    onChange={(event) => {
+                      void replacePhoto(product, event.target.files?.[0]);
+                      event.target.value = "";
+                    }}
+                  />
+                </label>
                 <button
                   type="button"
                   onClick={() =>
@@ -435,6 +500,45 @@ function Desk() {
           </li>
         ))}
       </ul>
+
+      <h2 className="mt-10 text-3xl font-semibold">Customers</h2>
+      <p className="mt-1 text-sm text-mist">
+        Everyone who signs in. Their bag, and every order they have placed.
+      </p>
+      {studio.data.customers.length === 0 ? (
+        <p className="mt-2 text-sm text-mist">No customer has signed in yet.</p>
+      ) : (
+        <ul className="mt-3 space-y-3">
+          {studio.data.customers.map((customer) => (
+            <li key={customer.userId} className="rounded-2xl bg-card px-4 py-3">
+              <p className="font-medium">{customer.name || "Customer"}</p>
+              <p className="text-sm">{customer.email || "No login email"}</p>
+              <p className="text-sm tabular-nums">{customer.phone || "No mobile yet"}</p>
+              <p className="mt-2 text-sm font-medium">Bag</p>
+              {customer.bag.length === 0 ? (
+                <p className="text-sm text-mist">Bag is empty.</p>
+              ) : (
+                <p className="text-sm text-mist">
+                  {customer.bag.map((line) => `${line.qty} × ${line.name}`).join(", ")}
+                </p>
+              )}
+              <p className="mt-2 text-sm font-medium">Order history</p>
+              {customer.orders.length === 0 ? (
+                <p className="text-sm text-mist">No orders yet.</p>
+              ) : (
+                <ul className="mt-1 space-y-1 text-sm text-mist">
+                  {customer.orders.map((order) => (
+                    <li key={order.id}>
+                      #{order.id} · {inr(order.total)} ·{" "}
+                      {order.items.map((item) => `${item.qty} × ${item.name}`).join(", ")}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
 
       <h2 className="mt-10 font-display text-3xl">Orders</h2>
       {studio.data.orders.length === 0 ? (
@@ -487,6 +591,94 @@ function Desk() {
 
 const inputClass =
   "mt-2 h-11 w-full rounded-2xl border border-ink/15 bg-paper px-3 text-sm text-ink outline-none focus:border-clay";
+
+function SiteEditor() {
+  const queryClient = useQueryClient();
+  const pages = useQuery({ queryKey: ["pages"], queryFn: () => getPages() });
+  const [message, setMessage] = useState("");
+  const rows = [
+    { slug: "home", label: "Home" },
+    ...CATEGORIES.map((category) => ({ slug: category.id, label: category.label })),
+  ];
+
+  async function save(slug: string, title: string, note: string) {
+    setMessage("");
+    try {
+      await savePage({ data: { slug, title, note } });
+      await queryClient.invalidateQueries({ queryKey: ["pages"] });
+      setMessage("Site page saved.");
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "Could not save that page.");
+    }
+  }
+
+  return (
+    <section className="mt-8 rounded-3xl bg-card p-4 md:p-6">
+      <h2 className="font-display text-3xl">Site</h2>
+      <p className="mt-1 text-sm text-mist">Home and every department. Leave a line blank to keep the original.</p>
+      <ul className="mt-4 space-y-4">
+        {rows.map((row) => {
+          const saved = pages.data?.find((page) => page.slug === row.slug);
+          return (
+            <PageRow
+              key={row.slug}
+              label={row.label}
+              title={saved?.title ?? ""}
+              note={saved?.note ?? ""}
+              onSave={(title, note) => save(row.slug, title, note)}
+            />
+          );
+        })}
+      </ul>
+      {message ? <p className="mt-3 text-sm">{message}</p> : null}
+    </section>
+  );
+}
+
+function PageRow({
+  label,
+  title,
+  note,
+  onSave,
+}: {
+  label: string;
+  title: string;
+  note: string;
+  onSave: (title: string, note: string) => void;
+}) {
+  const [nextTitle, setNextTitle] = useState(title);
+  const [nextNote, setNextNote] = useState(note);
+  useEffect(() => {
+    setNextTitle(title);
+    setNextNote(note);
+  }, [title, note]);
+  return (
+    <li className="border-t border-ink/10 pt-3">
+      <p className="text-sm font-medium">{label}</p>
+      <input
+        value={nextTitle}
+        maxLength={120}
+        placeholder="Title"
+        onChange={(event) => setNextTitle(event.target.value)}
+        className={inputClass}
+      />
+      <input
+        value={nextNote}
+        maxLength={400}
+        placeholder="Short line"
+        onChange={(event) => setNextNote(event.target.value)}
+        className={inputClass}
+      />
+      <button
+        type="button"
+        onClick={() => onSave(nextTitle.trim(), nextNote.trim())}
+        className="mt-2 h-11 rounded-full bg-ink px-4 text-sm text-paper"
+      >
+        Save {label}
+      </button>
+    </li>
+  );
+}
 
 function PhotoField({
   image,

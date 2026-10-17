@@ -92,6 +92,22 @@ export type ShopOrder = {
   userId: string;
 };
 
+export type SitePage = {
+  slug: string;
+  title: string;
+  note: string;
+};
+
+export type ShopCustomer = {
+  userId: string;
+  name: string;
+  email: string;
+  phone: string;
+  lastSeen: string;
+  bag: { id: number; name: string; qty: number; price: number }[];
+  orders: ShopOrder[];
+};
+
 export const customerSchema = z.object({
   name: z.string().trim().min(1, "Add the customer name.").max(80, "Keep the name shorter."),
   phone: z

@@ -2,8 +2,9 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { useMemo } from "react";
 import { ProductCard } from "@/components/shop/product-card";
+import { OwnerEdit } from "@/components/shop/owner-edit";
 import { ShopShell } from "@/components/shop/shell";
-import { listProducts } from "@/lib/shop/api";
+import { getPages, listProducts } from "@/lib/shop/api";
 import {
   CATEGORIES,
   HERO,
@@ -32,6 +33,8 @@ function Home() {
     queryFn: () => listProducts(),
     initialData: initial,
   });
+  const pages = useQuery({ queryKey: ["pages"], queryFn: () => getPages() });
+  const pageOf = (slug: string) => pages.data?.find((page) => page.slug === slug);
   const products = query.data;
   const needle = q.trim().toLowerCase();
   const visible = useMemo(
@@ -61,14 +64,21 @@ function Home() {
             <div className="absolute inset-0 flex flex-col justify-end p-5 md:p-12">
               <p className="text-xs font-semibold tracking-wide text-white uppercase">Rainside</p>
               <h1 className="mt-2 max-w-xl text-3xl font-semibold leading-tight text-white md:text-5xl">
-                Gadgets, kitchen, fashion, and the rest of the house.
+                {pageOf("home")?.title || "Gadgets, kitchen, fashion, and the rest of the house."}
               </h1>
-              <a
-                href="#shelf"
-                className="mt-4 inline-flex h-11 w-fit items-center bg-clay px-5 text-sm font-semibold text-white"
-              >
-                Shop now
-              </a>
+              {pageOf("home")?.note ? <p className="mt-2 max-w-md text-sm text-white/80">{pageOf("home")?.note}</p> : null}
+              <div className="mt-4 flex items-center gap-3">
+                <a
+                  href="#shelf"
+                  className="inline-flex h-11 w-fit items-center bg-clay px-5 text-sm font-semibold text-white"
+                >
+                  Shop now
+                </a>
+                <OwnerEdit
+                  label="Edit site"
+                  className="inline-flex h-11 items-center border border-white/40 px-4 text-sm font-medium text-white"
+                />
+              </div>
             </div>
           </section>
 
@@ -106,8 +116,8 @@ function Home() {
               <Shelf
                 key={category.id}
                 id={category.id}
-                title={category.label}
-                note={category.note}
+                title={pageOf(category.id)?.title || category.label}
+                note={pageOf(category.id)?.note || category.note}
                 items={products.filter((product) => product.category === category.id)}
               />
             ))}
@@ -115,11 +125,19 @@ function Home() {
         </>
       ) : (
         <section>
-          <h1 className="text-2xl font-semibold">
-            {needle ? `Search: ${q}` : categoryOf(cat).label}
-          </h1>
+          <div className="flex items-start justify-between gap-3">
+            <h1 className="text-2xl font-semibold">
+              {needle ? `Search: ${q}` : pageOf(cat)?.title || categoryOf(cat).label}
+            </h1>
+            {!needle && <OwnerEdit label="Edit section" />}
+          </div>
           <p className="mt-1 text-sm text-mist">
-            {visible.length === 0 ? "Nothing matched." : `${visible.length} products`}
+            {needle
+              ? visible.length === 0
+                ? "Nothing matched."
+                : `${visible.length} products`
+              : pageOf(cat)?.note ||
+                (visible.length === 0 ? "Nothing matched." : `${visible.length} products`)}
           </p>
           <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
             {visible.map((product) => (
@@ -158,6 +176,7 @@ function Shelf({
         </div>
         <div className="flex items-center gap-3">
           {off > 0 && <span className="text-xs font-semibold text-clay">UPTO {off}% OFF</span>}
+          <OwnerEdit label="Edit" />
           <Link to="/" search={{ cat: id, q: "" }} className="text-sm font-medium">
             View all
           </Link>

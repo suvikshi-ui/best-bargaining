@@ -108,6 +108,8 @@ function Bag() {
       setPhone("");
       setEmail("");
       await queryClient.invalidateQueries({ queryKey: ["products"] });
+      await queryClient.invalidateQueries({ queryKey: ["my-orders"] });
+      await queryClient.invalidateQueries({ queryKey: ["my-bag"] });
     } catch (err) {
       setError(err instanceof Error ? err.message : "The order did not go through.");
     } finally {
