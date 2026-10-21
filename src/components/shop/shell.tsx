@@ -4,7 +4,6 @@ import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { cn } from "@/lib/cn";
 import { useCart } from "@/lib/shop/cart";
 import { BagSync } from "@/components/shop/bag-sync";
-import { OwnerExtension } from "@/components/shop/owner-extension";
 import { CATEGORIES, readCat, type ShopCat } from "@/lib/shop/catalog";
 
 function useBagCount() {
@@ -132,7 +131,6 @@ export function ShopShell({ children }: { children: ReactNode }) {
           </div>
         </div>
       </footer>
-      <OwnerExtension />
       <nav
         className="fixed inset-x-0 bottom-0 z-30 border-t border-ink/10 bg-paper md:hidden"
         aria-label="Primary"

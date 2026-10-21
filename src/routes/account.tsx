@@ -32,13 +32,12 @@ function Account() {
         <div className="mt-6 h-28 animate-pulse bg-card" />
       ) : !user ? (
         <div className="mt-6 max-w-sm">
-          <p className="text-sm text-mist">Sign in to see the bag and every order on this login.</p>
+          <p className="text-sm text-mist">Orders are placed from the bag. No sign-in.</p>
           <Link
-            to="/login"
-            search={{ desk: false }}
+            to="/cart"
             className="mt-4 inline-flex h-11 items-center bg-ink px-5 text-sm font-medium text-paper"
           >
-            Sign in
+            Open bag
           </Link>
         </div>
       ) : (

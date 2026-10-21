@@ -2,7 +2,6 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { useMemo } from "react";
 import { ProductCard } from "@/components/shop/product-card";
-import { OwnerEdit } from "@/components/shop/owner-edit";
 import { ShopShell } from "@/components/shop/shell";
 import { getPages, listProducts } from "@/lib/shop/api";
 import {
@@ -67,18 +66,12 @@ function Home() {
                 {pageOf("home")?.title || "Gadgets, kitchen, fashion, and the rest of the house."}
               </h1>
               {pageOf("home")?.note ? <p className="mt-2 max-w-md text-sm text-white/80">{pageOf("home")?.note}</p> : null}
-              <div className="mt-4 flex items-center gap-3">
-                <a
-                  href="#shelf"
-                  className="inline-flex h-11 w-fit items-center bg-clay px-5 text-sm font-semibold text-white"
-                >
-                  Shop now
-                </a>
-                <OwnerEdit
-                  label="Edit site"
-                  className="inline-flex h-11 items-center border border-white/40 px-4 text-sm font-medium text-white"
-                />
-              </div>
+              <a
+                href="#shelf"
+                className="mt-4 inline-flex h-11 w-fit items-center bg-clay px-5 text-sm font-semibold text-white"
+              >
+                Shop now
+              </a>
             </div>
           </section>
 
@@ -125,12 +118,9 @@ function Home() {
         </>
       ) : (
         <section>
-          <div className="flex items-start justify-between gap-3">
-            <h1 className="text-2xl font-semibold">
-              {needle ? `Search: ${q}` : pageOf(cat)?.title || categoryOf(cat).label}
-            </h1>
-            {!needle && <OwnerEdit label="Edit section" />}
-          </div>
+          <h1 className="text-2xl font-semibold">
+            {needle ? `Search: ${q}` : pageOf(cat)?.title || categoryOf(cat).label}
+          </h1>
           <p className="mt-1 text-sm text-mist">
             {needle
               ? visible.length === 0
@@ -176,7 +166,6 @@ function Shelf({
         </div>
         <div className="flex items-center gap-3">
           {off > 0 && <span className="text-xs font-semibold text-clay">UPTO {off}% OFF</span>}
-          <OwnerEdit label="Edit" />
           <Link to="/" search={{ cat: id, q: "" }} className="text-sm font-medium">
             View all
           </Link>
