@@ -555,13 +555,12 @@ function Desk() {
                   <p>{order.customerName}</p>
                   <p className="tabular-nums">{order.customerPhone}</p>
                   <p>{order.customerEmail}</p>
-                  <p className="text-mist">Login: {order.accountEmail || order.customerEmail}</p>
                 </div>
               ) : (
                 <p className="mt-2 text-sm text-mist">No contact on this order.</p>
               )}
               <p className="mt-2 text-sm text-mist">
-                {order.items.map((item) => `${item.qty} × ${item.name}`).join(", ")}
+                Ordered: {order.items.map((item) => `${item.qty} × ${item.name}`).join(", ")}
               </p>
             </li>
           ))}

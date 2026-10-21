@@ -2,9 +2,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { ShopShell } from "@/components/shop/shell";
-import { OwnerSignButtons } from "@/components/shop/sign-buttons";
 import { placeOrder, listProducts } from "@/lib/shop/api";
-import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { useCart } from "@/lib/shop/cart";
 import { inr, customerSchema, type OrderItem } from "@/lib/shop/catalog";
 
@@ -36,7 +34,6 @@ function Bag() {
   const setQty = useCart((state) => state.setQty);
   const remove = useCart((state) => state.remove);
   const clear = useCart((state) => state.clear);
-  const { user, isPending: userPending } = useCurrentUserState();
   const [ready, setReady] = useState(false);
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
@@ -56,12 +53,6 @@ function Bag() {
     }
   }, []);
 
-  useEffect(() => {
-    if (!user) return;
-    setName((value) => value || user.displayName || "");
-    setEmail((value) => value || user.primaryEmail || "");
-  }, [user]);
-
   const rows = lines
     .map((line) => {
       const product = products.data.find((item) => item.id === line.id);
@@ -75,11 +66,6 @@ function Bag() {
     setBusy(true);
     setError("");
     try {
-      if (!user) {
-        setError("Sign in before you place the order.");
-        setBusy(false);
-        return;
-      }
       const customer = customerSchema.safeParse({ name, phone, email });
       if (!customer.success) {
         setError(customer.error.issues[0]?.message ?? "Add the customer details.");
@@ -90,7 +76,6 @@ function Bag() {
         data: {
           lines: rows.map((row) => ({ id: row.line.id, qty: row.line.qty })),
           customer: customer.data,
-          accountEmail: user.primaryEmail || customer.data.email,
         },
       });
       const next: Receipt = {
@@ -121,7 +106,7 @@ function Bag() {
     <ShopShell>
       <h1 className="font-display text-5xl leading-none">Bag</h1>
       <p className="mt-2 max-w-md text-sm text-mist">
-        Sign in, then add your name, mobile, and email. The order stays on that login.
+        Add your name, mobile, and email, then place the order. No sign-in.
       </p>
 
       {receipt && ready && lines.length === 0 && (
@@ -223,17 +208,7 @@ function Bag() {
           <aside className="h-fit rounded-3xl bg-card p-5">
             <p className="text-sm text-mist">Total</p>
             <p className="font-display text-4xl tabular-nums">{inr(total)}</p>
-            {userPending ? (
-              <div className="mt-4 h-24 animate-pulse bg-paper" />
-            ) : !user ? (
-              <div className="mt-4">
-                <p className="mb-3 text-sm text-mist">Sign in to place this order. Guest checkout is off.</p>
-                <OwnerSignButtons redirectTo="/cart" />
-              </div>
-            ) : (
-              <>
-            <p className="mt-4 text-xs text-mist">Logged in as {user.primaryEmail}</p>
-            <label className="mt-3 block text-sm text-mist" htmlFor="customer-name">
+            <label className="mt-4 block text-sm text-mist" htmlFor="customer-name">
               Customer name
             </label>
             <input
@@ -282,8 +257,6 @@ function Bag() {
             >
               {busy ? "Reserving…" : "Place order"}
             </button>
-              </>
-            )}
           </aside>
         </div>
       )}

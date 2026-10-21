@@ -312,23 +312,18 @@ function zLines() {
 }
 
 export const placeOrder = createServerFn({ method: "POST" })
-  .middleware([authMiddleware])
   .validator((raw: unknown) => {
     if (!raw || typeof raw !== "object") throw new Error("The bag is empty.");
-    const body = raw as { lines?: unknown; customer?: unknown; accountEmail?: unknown };
+    const body = raw as { lines?: unknown; customer?: unknown };
     const lines = orderSchema.parse({ lines: body.lines });
     const customer = customerSchema.safeParse(body.customer);
     if (!customer.success) {
       throw new Error(customer.error.issues[0]?.message ?? "Add the customer details.");
     }
-    const accountEmail =
-      typeof body.accountEmail === "string" && body.accountEmail.includes("@")
-        ? body.accountEmail.trim().slice(0, 120)
-        : customer.data.email;
-    return { lines, customer: customer.data, accountEmail };
+    return { lines, customer: customer.data };
   })
-  .handler(async ({ context, data }) => {
-    const { lines, customer, accountEmail } = data;
+  .handler(async ({ data }) => {
+    const { lines, customer } = data;
     const sql = await getSql();
     const picked: { id: number; name: string; price: number; qty: number }[] = [];
     for (const line of lines) {
@@ -368,21 +363,11 @@ export const placeOrder = createServerFn({ method: "POST" })
           ${customer.name},
           ${customer.phone},
           ${customer.email},
-          ${accountEmail},
-          ${context.userId}
+          ${""},
+          ${"guest"}
         )
         returning id
       `;
-      await sql`
-        insert into customer_profiles (user_id, name, email, phone, last_seen)
-        values (${context.userId}, ${customer.name}, ${accountEmail}, ${customer.phone}, now())
-        on conflict (user_id) do update set
-          name = excluded.name,
-          email = excluded.email,
-          phone = excluded.phone,
-          last_seen = now()
-      `;
-      await sql`delete from bags where user_id = ${context.userId}`;
       return {
         id: Number(inserted[0].id),
         total,

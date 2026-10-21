@@ -1,11 +1,11 @@
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
-import { Search, ShoppingBag, Store, UserRound } from "lucide-react";
+import { Search, ShoppingBag, Store } from "lucide-react";
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { cn } from "@/lib/cn";
 import { useCart } from "@/lib/shop/cart";
 import { BagSync } from "@/components/shop/bag-sync";
+import { OwnerExtension } from "@/components/shop/owner-extension";
 import { CATEGORIES, readCat, type ShopCat } from "@/lib/shop/catalog";
-import { useCurrentUserState } from "@/lib/auth/use-current-user";
 
 function useBagCount() {
   const count = useCart((state) => state.lines.reduce((sum, line) => sum + line.qty, 0));
@@ -27,9 +27,7 @@ export function ShopShell({ children }: { children: ReactNode }) {
   });
   const shopOn = path === "/" || path.startsWith("/product");
   const bagOn = path === "/cart";
-  const accountOn = path === "/account" || path === "/login";
   const count = useBagCount();
-  const { user } = useCurrentUserState();
 
   const [q, setQ] = useState("");
 
@@ -68,13 +66,6 @@ export function ShopShell({ children }: { children: ReactNode }) {
               <Search className="size-4" aria-hidden="true" />
             </button>
           </form>
-          <Link
-            to={user ? "/account" : "/login"}
-            search={user ? undefined : { desk: false }}
-            className="shrink-0 text-sm font-medium"
-          >
-            {user ? "Account" : "Sign in"}
-          </Link>
           <Link
             to="/cart"
             aria-label={count ? `Bag, ${count} pieces` : "Bag"}
@@ -130,8 +121,7 @@ export function ShopShell({ children }: { children: ReactNode }) {
             <p className="text-xs font-semibold tracking-wide uppercase">Orders</p>
             <div className="mt-3 flex flex-col gap-2 text-sm text-mist">
               <Link to="/cart">Your bag</Link>
-              <Link to="/account">Your orders</Link>
-              <p>Sign in before you place an order.</p>
+              <p>Add your name, mobile, and email when you place the order.</p>
             </div>
           </div>
           <div>
@@ -141,17 +131,13 @@ export function ShopShell({ children }: { children: ReactNode }) {
             </p>
           </div>
         </div>
-        <p className="pb-6 text-center">
-          <Link to="/login" search={{ desk: true }} className="text-[11px] text-mist/70 hover:text-ink">
-            Owner login
-          </Link>
-        </p>
       </footer>
+      <OwnerExtension />
       <nav
         className="fixed inset-x-0 bottom-0 z-30 border-t border-ink/10 bg-paper md:hidden"
         aria-label="Primary"
       >
-        <div className="grid grid-cols-3">
+        <div className="grid grid-cols-2">
           <Link
             to="/"
             search={{ cat: "all", q: "" }}
@@ -172,17 +158,6 @@ export function ShopShell({ children }: { children: ReactNode }) {
           >
             <ShoppingBag className="size-5" aria-hidden="true" />
             Bag
-          </Link>
-          <Link
-            to={user ? "/account" : "/login"}
-            search={user ? undefined : { desk: false }}
-            className={cn(
-              "flex h-14 flex-col items-center justify-center gap-1 text-xs",
-              accountOn ? "text-ink" : "text-mist",
-            )}
-          >
-            <UserRound className="size-5" aria-hidden="true" />
-            {user ? "Account" : "Sign in"}
           </Link>
         </div>
       </nav>
