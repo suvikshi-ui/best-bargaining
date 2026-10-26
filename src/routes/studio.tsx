@@ -149,6 +149,14 @@ function Desk() {
     },
   });
 
+  useEffect(() => {
+    if (!piece || opened.current === piece || studio.data?.role !== "owner") return;
+    const product = studio.data.products.find((item) => item.id === piece);
+    if (!product) return;
+    opened.current = piece;
+    edit(product);
+  }, [piece, studio.data]);
+
   if (studio.isPending) return <div className="h-80 animate-pulse rounded-3xl bg-card" />;
   if (studio.isError) {
     return (
@@ -230,14 +238,6 @@ function Desk() {
       setMessage(err instanceof Error ? err.message : "Could not change the count.");
     }
   }
-
-  useEffect(() => {
-    if (!piece || opened.current === piece || studio.data?.role !== "owner") return;
-    const product = studio.data.products.find((item) => item.id === piece);
-    if (!product) return;
-    opened.current = piece;
-    edit(product);
-  }, [piece, studio.data]);
 
   async function replacePhoto(product: Product, file: File | undefined) {
     if (!file) return;
