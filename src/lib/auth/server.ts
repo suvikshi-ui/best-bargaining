@@ -107,6 +107,8 @@ const LOCAL_DEV_ORIGINS: string[] = [
 // shop domain, or a one-off deploy host) must be trusted or email sign-up
 // returns "Invalid origin".
 const vercelHostnames = [
+  "bestbargain.in",
+  "www.bestbargain.in",
   "rainside-shop.vercel.app",
   "rainside-shop-*-hotel-status.vercel.app",
   env("VERCEL_URL"),
