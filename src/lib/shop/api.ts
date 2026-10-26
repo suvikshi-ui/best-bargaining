@@ -15,8 +15,39 @@ import {
   type SitePage,
 } from "@/lib/shop/catalog";
 
+/**
+ * OWNER_EMAIL (server env) locks the studio owner to one email address.
+ * When set, only the signed-in user with that email (case-insensitive) can be
+ * or become the owner; anyone else is "locked", even if the shop row names them.
+ * If the row points at someone else, the matching user takes it over and the
+ * previous owner's products move to them. When unset: first sign-in wins.
+ */
+function ownerEmail(): string | null {
+  const value = process.env.OWNER_EMAIL?.trim().toLowerCase();
+  return value ? value : null;
+}
+
 async function ensureOwner(userId: string): Promise<"owner" | "locked"> {
   const sql = await getSql();
+  const lockedEmail = ownerEmail();
+  if (lockedEmail) {
+    const users = await sql<{ email: string | null }>`
+      select email from "user" where id = ${userId}
+    `;
+    const email = users[0]?.email?.trim().toLowerCase() ?? "";
+    if (email !== lockedEmail) return "locked";
+    const current = await sql<{ owner_user_id: string | null }>`
+      select owner_user_id from shop where id = 1
+    `;
+    const previous = current[0]?.owner_user_id ?? null;
+    if (previous === userId) return "owner";
+    await sql`update shop set owner_user_id = ${userId} where id = 1`;
+    await sql`update products set user_id = ${userId} where user_id = 'seed'`;
+    if (previous) {
+      await sql`update products set user_id = ${userId} where user_id = ${previous}`;
+    }
+    return "owner";
+  }
   const rows = await sql<{ owner_user_id: string | null }>`
     select owner_user_id from shop where id = 1
   `;
