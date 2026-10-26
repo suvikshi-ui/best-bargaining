@@ -1,4 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { redirectPublicPagesOnStudioHost } from "@/lib/studio/host";
 import { HeadContent, Outlet, Scripts, createRootRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { PreviewHostBridge } from "@/components/preview-host-bridge";
@@ -8,6 +9,7 @@ import appCss from "../styles.css?url";
 const APP_NAME = "Best Bargain";
 
 export const Route = createRootRoute({
+  beforeLoad: ({ location }) => redirectPublicPagesOnStudioHost(location.pathname),
   head: () => ({
     meta: [
       { charSet: "utf-8" },

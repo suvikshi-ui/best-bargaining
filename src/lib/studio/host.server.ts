@@ -25,3 +25,10 @@ export function requestIsStudioHost(): boolean {
   const forwarded = getRequestHeader("x-forwarded-host");
   return isStudioHostname(forwarded ?? getRequestHost());
 }
+
+/** True only on the dedicated studio host itself (not dev/preview hosts). */
+export function requestIsDedicatedStudioHost(): boolean {
+  const raw = getRequestHeader("x-forwarded-host") ?? getRequestHost();
+  const host = (raw ?? "").split(",")[0]!.trim().toLowerCase().replace(/:\d+$/, "");
+  return host === studioHost();
+}
