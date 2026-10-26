@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { OwnerSignButtons } from "@/components/shop/sign-buttons";
+import { requireStudioHost } from "@/lib/studio/host";
 import { ShopShell } from "@/components/shop/shell";
 import { UserButton } from "@/lib/auth/gates";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
@@ -18,6 +19,7 @@ import {
 } from "@/lib/shop/catalog";
 
 export const Route = createFileRoute("/studio")({
+  beforeLoad: () => requireStudioHost(),
   validateSearch: (search: Record<string, unknown>) => {
     const piece = typeof search.piece === "number" ? search.piece : Number(search.piece);
     return { piece: Number.isInteger(piece) && piece > 0 ? piece : 0 };

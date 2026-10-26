@@ -21,3 +21,14 @@ Environment Variables (Production, and Preview if wanted), then redeploy.
   Customer sign-up stays open.
 - When unset, the old behaviour applies: the first account to sign in to
   `/studio` becomes the owner.
+
+## Owner desk host (`STUDIO_HOST`)
+
+`/studio` and `/login` (and owner server actions) only work on `STUDIO_HOST`
+(default `studio.bestbargain.in`), plus localhost, `*.vercel.app` and preview
+hosts. On `bestbargain.in` / `www.bestbargain.in` they return 404, and public
+pages carry no owner/login links. To go live:
+
+1. Vercel → project → Domains: add `studio.bestbargain.in`.
+2. GoDaddy DNS: CNAME `studio` → the target Vercel shows for that domain.
+3. Optional env: `STUDIO_HOST=studio.bestbargain.in` (default already matches).

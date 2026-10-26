@@ -1,9 +1,11 @@
 import { Navigate, createFileRoute } from "@tanstack/react-router";
 import { OwnerSignButtons } from "@/components/shop/sign-buttons";
+import { requireStudioHost } from "@/lib/studio/host";
 import { ShopShell } from "@/components/shop/shell";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 
 export const Route = createFileRoute("/login")({
+  beforeLoad: () => requireStudioHost(),
   validateSearch: (search: Record<string, unknown>) => ({
     desk: search.desk === "1" || search.desk === 1 || search.desk === true,
   }),

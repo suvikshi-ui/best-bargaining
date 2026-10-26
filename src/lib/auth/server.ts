@@ -109,6 +109,8 @@ const LOCAL_DEV_ORIGINS: string[] = [
 const vercelHostnames = [
   "bestbargain.in",
   "www.bestbargain.in",
+  "studio.bestbargain.in",
+  env("STUDIO_HOST"),
   "rainside-shop.vercel.app",
   "rainside-shop-*-hotel-status.vercel.app",
   env("VERCEL_URL"),

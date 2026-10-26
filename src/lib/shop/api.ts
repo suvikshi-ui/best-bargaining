@@ -28,6 +28,8 @@ function ownerEmail(): string | null {
 }
 
 async function ensureOwner(userId: string): Promise<"owner" | "locked"> {
+  const { requestIsStudioHost } = await import("@/lib/studio/host.server");
+  if (!requestIsStudioHost()) return "locked";
   const sql = await getSql();
   const lockedEmail = ownerEmail();
   if (lockedEmail) {

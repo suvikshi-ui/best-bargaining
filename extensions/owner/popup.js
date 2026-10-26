@@ -1,3 +1,3 @@
 document.getElementById("open").addEventListener("click", () => {
-  chrome.tabs.create({ url: "https://bestbargain.in/login" });
+  chrome.tabs.create({ url: "https://studio.bestbargain.in/login" });
 });
