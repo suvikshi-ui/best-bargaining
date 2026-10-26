@@ -74,7 +74,7 @@ function Bag() {
   const bagQuote = useQuery({
     queryKey: ["bag-quote", quoteKey],
     queryFn: () => quoteBag({ data: JSON.parse(quoteKey) as Record<string, unknown> }),
-    enabled: ready && quoteLines.length > 0,
+    enabled: ready && quoteLines.length > 0 && !quoteKey.startsWith('{"lines":[]'),
     placeholderData: keepPreviousData,
     staleTime: 15_000,
   });
