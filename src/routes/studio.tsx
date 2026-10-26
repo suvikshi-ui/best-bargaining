@@ -3,6 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { OwnerSignButtons } from "@/components/shop/sign-buttons";
 import { ChangePassword } from "@/components/studio/change-password";
+import { DiscountsSection, LoyalGuests } from "@/components/studio/discounts";
 import { requireStudioHost } from "@/lib/studio/host";
 import { ShopShell } from "@/components/shop/shell";
 import { UserButton } from "@/lib/auth/gates";
@@ -596,6 +597,8 @@ function Desk() {
 
       <StorefrontSettings />
       <ReferralAgents />
+      <DiscountsSection />
+      <LoyalGuests />
       <ChangePassword />
       <OrdersTable orders={studio.data.orders} />
     </div>
@@ -851,6 +854,7 @@ function OrdersTable({ orders }: { orders: ShopOrder[] }) {
         order.customerEmail,
         order.customerPhone,
         order.referralCode ?? "",
+        order.discountLabel ?? "",
         `#${order.id}`,
         ...order.items.map((item) => item.name),
       ]
@@ -884,7 +888,7 @@ function OrdersTable({ orders }: { orders: ShopOrder[] }) {
                 <th className="px-3 py-2">Email</th>
                 <th className="px-3 py-2">WhatsApp</th>
                 <th className="px-3 py-2 text-right">Total</th>
-                <th className="px-3 py-2">Referral</th>
+                <th className="px-3 py-2">Discount</th>
                 <th className="px-3 py-2">Items</th>
               </tr>
             </thead>
@@ -918,9 +922,9 @@ function OrdersTable({ orders }: { orders: ShopOrder[] }) {
                     </td>
                     <td className="px-3 py-2 text-right tabular-nums">{inr(order.total)}</td>
                     <td className="px-3 py-2 whitespace-nowrap">
-                      {order.referralCode ? (
+                      {order.discountLabel || order.referralCode ? (
                         <>
-                          {order.referralCode}
+                          {order.discountLabel || order.referralCode}
                           {order.discountAmount ? (
                             <span className="block text-xs text-mist">−{inr(order.discountAmount)}</span>
                           ) : null}

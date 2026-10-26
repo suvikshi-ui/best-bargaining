@@ -1,10 +1,10 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { ShopShell } from "@/components/shop/shell";
-import { checkReferral, placeOrder, listProducts } from "@/lib/shop/api";
+import { quoteBag, placeOrder, listProducts } from "@/lib/shop/api";
 import { useCart } from "@/lib/shop/cart";
-import { discountFor, inr, customerSchema, readReferralCode, type OrderItem } from "@/lib/shop/catalog";
+import { inr, customerSchema, readReferralCode, type OrderItem } from "@/lib/shop/catalog";
 
 export const Route = createFileRoute("/cart")({
   loader: () => listProducts(),
@@ -20,6 +20,7 @@ type Receipt = {
   email: string;
   discount?: number;
   referralCode?: string;
+  discounts?: { label: string; amount: number }[];
 };
 
 const RECEIPT_KEY = "rainside-receipt";
@@ -42,12 +43,6 @@ function Bag() {
   const [email, setEmail] = useState("");
   const [referral, setReferral] = useState("");
   const referralCode = readReferralCode(referral);
-  const referralCheck = useQuery({
-    queryKey: ["referral", referralCode],
-    queryFn: () => checkReferral({ data: referralCode }),
-    enabled: referralCode.length >= 4,
-    staleTime: 60_000,
-  });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [receipt, setReceipt] = useState<Receipt | null>(null);
@@ -69,9 +64,25 @@ function Bag() {
       return { line, product };
     })
     .filter((row) => row.product);
-  const total = rows.reduce((sum, row) => sum + (row.product?.price ?? 0) * row.line.qty, 0);
-  const referralPct = referralCheck.data?.discountPct ?? 0;
-  const discount = referralCheck.data ? discountFor(total, referralPct) : 0;
+  const subtotalLocal = rows.reduce((sum, row) => sum + (row.product?.price ?? 0) * row.line.qty, 0);
+  // The server prices the bag (discounts included) so the bag shows exactly what the order will charge.
+  const quoteLines = rows.map((row) => ({ id: row.line.id, qty: row.line.qty }));
+  const quoteKey = useDebounced(
+    JSON.stringify({ lines: quoteLines, code: referralCode, phone: phone.trim(), email: email.trim() }),
+    350,
+  );
+  const bagQuote = useQuery({
+    queryKey: ["bag-quote", quoteKey],
+    queryFn: () => quoteBag({ data: JSON.parse(quoteKey) as Record<string, unknown> }),
+    enabled: ready && quoteLines.length > 0,
+    placeholderData: keepPreviousData,
+    staleTime: 15_000,
+  });
+  const quoteFresh = bagQuote.data && !bagQuote.isPlaceholderData && bagQuote.data.subtotal === subtotalLocal;
+  const shownDiscounts = quoteFresh ? bagQuote.data!.discounts : [];
+  const total = subtotalLocal;
+  const discount = quoteFresh ? bagQuote.data!.discount : 0;
+  const codeStatus = quoteFresh ? bagQuote.data!.codeStatus : "none";
   const blocked = rows.some((row) => row.product && row.line.qty > row.product.stock);
 
   async function checkout() {
@@ -100,6 +111,7 @@ function Bag() {
         email: customer.data.email,
         discount: result.discount,
         referralCode: result.referralCode,
+        discounts: result.discounts,
       };
       sessionStorage.setItem(RECEIPT_KEY, JSON.stringify(next));
       setReceipt(next);
@@ -136,10 +148,14 @@ function Bag() {
               </li>
             ))}
           </ul>
-          {receipt.discount ? (
-            <p className="mt-3 text-sm text-paper/80">
-              Referral {receipt.referralCode}: −{inr(receipt.discount)}
-            </p>
+          {receipt.discounts?.length ? (
+            receipt.discounts.map((item) => (
+              <p key={item.label} className="mt-3 text-sm text-paper/80">
+                {item.label}: −{inr(item.amount)}
+              </p>
+            ))
+          ) : receipt.discount ? (
+            <p className="mt-3 text-sm text-paper/80">Discount: −{inr(receipt.discount)}</p>
           ) : null}
           <p className="mt-4 font-display text-2xl tabular-nums">{inr(receipt.total)}</p>
           {receipt.name ? (
@@ -229,9 +245,14 @@ function Bag() {
           <aside className="h-fit rounded-3xl bg-card p-5">
             <p className="text-sm text-mist">Total</p>
             {discount > 0 ? (
-              <p className="text-sm text-mist tabular-nums" data-testid="referral-discount">
-                Subtotal {inr(total)} · Referral {referralPct}% −{inr(discount)}
-              </p>
+              <div className="text-sm text-mist tabular-nums" data-testid="bag-discounts">
+                <p>Subtotal {inr(total)}</p>
+                {shownDiscounts.map((item) => (
+                  <p key={item.label}>
+                    {item.label} −{inr(item.amount)}
+                  </p>
+                ))}
+              </div>
             ) : null}
             <p className="font-display text-4xl tabular-nums">{inr(total - discount)}</p>
             <label className="mt-4 block text-sm text-mist" htmlFor="customer-name">
@@ -284,10 +305,12 @@ function Bag() {
               placeholder="e.g. VIK123"
               className="mt-2 h-11 w-full rounded-2xl border border-ink/15 bg-paper px-3 text-sm uppercase outline-none focus:border-clay"
             />
-            {referralCode.length >= 4 && referralCheck.isFetched && !referralCheck.data ? (
+            {codeStatus === "invalid" ? (
               <p className="mt-1 text-xs text-clay">That code is not valid.</p>
-            ) : referralCheck.data ? (
-              <p className="mt-1 text-xs text-mist">{referralPct}% off applied.</p>
+            ) : codeStatus === "applied" ? (
+              <p className="mt-1 text-xs text-mist">Code applied.</p>
+            ) : codeStatus === "valid" ? (
+              <p className="mt-1 text-xs text-mist">Code recognised, but a better discount (or none for this bag) applies.</p>
             ) : null}
             {error && (
               <p className="mt-3 text-sm text-clay" role="alert">
@@ -307,4 +330,14 @@ function Bag() {
       )}
     </ShopShell>
   );
+}
+
+/** The value after it has stopped changing for `ms` (live bag pricing without a request per keystroke). */
+function useDebounced<T>(value: T, ms: number): T {
+  const [settled, setSettled] = useState(value);
+  useEffect(() => {
+    const timer = setTimeout(() => setSettled(value), ms);
+    return () => clearTimeout(timer);
+  }, [value, ms]);
+  return settled;
 }

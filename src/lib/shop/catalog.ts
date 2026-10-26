@@ -96,6 +96,7 @@ export type ShopOrder = {
   userId: string;
   referralCode?: string;
   discountAmount?: number;
+  discountLabel?: string;
 };
 
 export type ReferralAgent = {

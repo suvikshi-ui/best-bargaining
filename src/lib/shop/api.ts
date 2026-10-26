@@ -14,13 +14,21 @@ import {
   type ShopOrder,
   type SitePage,
   type ReferralAgent,
-  discountFor,
   readReferralCode,
   parseAgentCode,
   type ShopSettings,
   parseJsonList,
   shopSettingsSchema,
+  normalizeWhatsApp,
+  CATEGORIES as ALL_CATEGORIES,
 } from "@/lib/shop/catalog";
+import {
+  quote as computeQuote,
+  DISCOUNT_TYPES,
+  type DiscountRule,
+  type DiscountType,
+  type Quote,
+} from "@/lib/shop/discounts";
 
 /**
  * OWNER_EMAIL (server env) locks the studio owner to one email address.
@@ -169,10 +177,11 @@ export const getStudio = createServerFn({ method: "GET" })
       user_id: string;
       referral_code: string | null;
       discount_amount: number | null;
+      discount_label: string | null;
     }>`
       select id, items, total, created_at::text as created_at,
         customer_name, customer_phone, customer_email, account_email, user_id,
-        referral_code, discount_amount
+        referral_code, discount_amount, discount_label
       from orders
       order by id desc
       limit 80
@@ -215,6 +224,7 @@ export const getStudio = createServerFn({ method: "GET" })
       userId: order.user_id ?? "",
       referralCode: order.referral_code ?? "",
       discountAmount: Number(order.discount_amount ?? 0),
+      discountLabel: order.discount_label ?? "",
     }));
     const byUser = new Map<string, ShopCustomer>();
     for (const profile of profiles) {
@@ -376,12 +386,10 @@ export const placeOrder = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const { lines, customer, referralCode } = data;
     const sql = await getSql();
-    const agent = referralCode ? await findActiveAgent(referralCode) : null;
-    if (referralCode && !agent) throw new Error("That referral code is not valid.");
-    const picked: { id: number; name: string; price: number; qty: number }[] = [];
+    const picked: { id: number; name: string; price: number; qty: number; category: string }[] = [];
     for (const line of lines) {
-      const rows = await sql<{ id: number; name: string; price: number; stock: number }>`
-        select id, name, price, stock from products
+      const rows = await sql<{ id: number; name: string; price: number; stock: number; category: string }>`
+        select id, name, price, stock, category from products
         where id = ${line.id} and published = true
       `;
       const product = rows[0];
@@ -394,8 +402,11 @@ export const placeOrder = createServerFn({ method: "POST" })
         name: product.name,
         price: Number(product.price),
         qty: line.qty,
+        category: product.category,
       });
     }
+    const priced = await quoteFor(picked, referralCode, customer.phone, customer.email);
+    if (priced.codeStatus === "invalid") throw new Error("That code is not valid.");
     const held: typeof picked = [];
     try {
       for (const line of picked) {
@@ -407,22 +418,29 @@ export const placeOrder = createServerFn({ method: "POST" })
         if (!rows.length) throw new Error(`${line.name} just sold out.`);
         held.push(line);
       }
-      const subtotal = picked.reduce((sum, line) => sum + line.price * line.qty, 0);
-      const discount = agent ? discountFor(subtotal, agent.discountPct) : 0;
-      const total = subtotal - discount;
+      const { subtotal, discount, total, applied } = priced;
+      const primary = applied[0];
+      const referral = applied.find((item) => item.kind === "referral");
+      const ruleUsed = applied.find((item) => item.kind !== "referral");
+      const items = picked.map(({ id, name, price, qty }) => ({ id, name, price, qty }));
       const inserted = await sql<{ id: number }>`
-        insert into orders (items, total, customer_name, customer_phone, customer_email, account_email, user_id, referral_code, referral_agent_id, discount_amount)
+        insert into orders (items, total, customer_name, customer_phone, customer_email, account_email, user_id,
+          referral_code, referral_agent_id, discount_amount, discount_type, discount_label, discount_id, discounts_applied)
         values (
-          ${JSON.stringify(picked)},
+          ${JSON.stringify(items)},
           ${total},
           ${customer.name},
           ${customer.phone},
           ${customer.email},
           ${""},
           ${"guest"},
-          ${agent ? agent.code : ""},
-          ${agent ? agent.id : null},
-          ${discount}
+          ${referral ? referral.code : ""},
+          ${referral ? referral.id : null},
+          ${discount},
+          ${applied.map((item) => item.kind).join("+")},
+          ${applied.map((item) => item.label).join(" + ")},
+          ${ruleUsed ? ruleUsed.id : null},
+          ${JSON.stringify(applied.map(({ kind, id, code, amount }) => ({ kind, id, code, amount })))}
         )
         returning id
       `;
@@ -431,8 +449,9 @@ export const placeOrder = createServerFn({ method: "POST" })
         total,
         subtotal,
         discount,
-        referralCode: agent ? agent.code : "",
-        lines: picked,
+        discounts: applied.map(({ label, amount }) => ({ label, amount })),
+        referralCode: primary?.code ?? "",
+        lines: items,
       };
     } catch (error) {
       for (const line of held) {
@@ -596,15 +615,6 @@ async function findActiveAgent(code: string) {
   return row ? { id: Number(row.id), code: row.code, discountPct: Number(row.discount_pct) } : null;
 }
 
-/** Public: check a referral code at checkout (the server re-checks on order). */
-export const checkReferral = createServerFn({ method: "GET" })
-  .validator((raw: unknown) => readReferralCode(raw))
-  .handler(async ({ data: code }) => {
-    if (!code) return null;
-    const agent = await findActiveAgent(code);
-    return agent ? { code: agent.code, discountPct: agent.discountPct } : null;
-  });
-
 async function requireOwner(userId: string) {
   if ((await ensureOwner(userId)) !== "owner") throw new Error("Only the shop owner can manage referral agents.");
 }
@@ -661,6 +671,7 @@ export const createReferralAgent = createServerFn({ method: "POST" })
   })
   .handler(async ({ context, data }) => {
     await requireOwner(context.userId);
+    await assertCodeFree(data.code, {});
     const sql = await getSql();
     try {
       const rows = await sql<{ id: number }>`
@@ -689,6 +700,7 @@ export const updateReferralAgent = createServerFn({ method: "POST" })
   )
   .handler(async ({ context, data }) => {
     await requireOwner(context.userId);
+    await assertCodeFree(data.code, { agentId: data.id });
     const sql = await getSql();
     try {
       await sql`
@@ -710,5 +722,256 @@ export const deleteReferralAgent = createServerFn({ method: "POST" })
     await requireOwner(context.userId);
     const sql = await getSql();
     await sql`delete from referral_agents where id = ${id}`;
+    return { ok: true as const };
+  });
+
+// ── Discounts ────────────────────────────────────────────────────────────────
+
+type DiscountRow = {
+  id: number;
+  type: string;
+  name: string;
+  code: string | null;
+  phone: string;
+  pct: number | null;
+  amount: number | null;
+  cap: number | null;
+  min_subtotal: number | null;
+  min_items: number | null;
+  starts_at: string | null;
+  ends_at: string | null;
+  categories: string;
+  max_uses: number | null;
+  active: boolean;
+  uses: number;
+  sales: number;
+};
+
+const n = (value: unknown) => (value === null || value === undefined ? null : Number(value));
+
+async function loadDiscounts(): Promise<(DiscountRule & { sales: number })[]> {
+  const sql = await getSql();
+  const rows = await sql<DiscountRow>`
+    select d.id, d.type, d.name, d.code, d.phone, d.pct, d.amount, d.cap, d.min_subtotal, d.min_items,
+      to_char(d.starts_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') as starts_at,
+      to_char(d.ends_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') as ends_at,
+      d.categories, d.max_uses, d.active,
+      count(o.id)::int as uses, coalesce(sum(o.total), 0)::int as sales
+    from discounts d
+    left join orders o on o.discounts_applied::jsonb @> jsonb_build_array(jsonb_build_object('kind', d.type, 'id', d.id))
+    group by d.id
+    order by d.created_at desc, d.id desc
+  `;
+  return rows.map((row) => ({
+    id: Number(row.id),
+    type: row.type as DiscountType,
+    name: row.name,
+    code: row.code,
+    phone: row.phone ?? "",
+    pct: n(row.pct),
+    amount: n(row.amount),
+    cap: n(row.cap),
+    minSubtotal: n(row.min_subtotal),
+    minItems: n(row.min_items),
+    startsAt: row.starts_at,
+    endsAt: row.ends_at,
+    categories: parseJsonList(row.categories),
+    maxUses: n(row.max_uses),
+    active: Boolean(row.active),
+    uses: Number(row.uses),
+    sales: Number(row.sales),
+  }));
+}
+
+async function isFirstOrder(phone: string, email: string): Promise<boolean | null> {
+  const p = phone ? normalizeWhatsApp(phone) : "";
+  const e = email.trim().toLowerCase();
+  const validPhone = /^\+[1-9]\d{7,14}$/.test(p);
+  const validEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
+  if (!validPhone && !validEmail) return null;
+  const sql = await getSql();
+  const rows = await sql<{ c: number }>`
+    select count(*)::int as c from orders
+    where (${validPhone} and customer_phone = ${p}) or (${validEmail} and lower(customer_email) = ${e})
+  `;
+  return Number(rows[0]?.c ?? 0) === 0;
+}
+
+async function stackSetting(): Promise<boolean> {
+  const sql = await getSql();
+  const rows = await sql<{ stack_referral: boolean }>`select stack_referral from shop where id = 1`;
+  return Boolean(rows[0]?.stack_referral);
+}
+
+/** Server-side price of a bag: the single source of truth for the bag display and the order. */
+async function quoteFor(
+  lines: { price: number; qty: number; category: string }[],
+  code: string,
+  phone: string,
+  email: string,
+): Promise<Quote> {
+  const [rules, agent, firstOrder, stackReferral] = await Promise.all([
+    loadDiscounts(),
+    code ? findActiveAgent(code) : Promise.resolve(null),
+    isFirstOrder(phone, email),
+    stackSetting(),
+  ]);
+  return computeQuote({
+    lines,
+    rules,
+    code,
+    agent,
+    isFirstOrder: firstOrder,
+    stackReferral,
+    now: new Date(),
+  });
+}
+
+/** Public: price the bag (live in the cart). Returns only labels and rupee amounts. */
+export const quoteBag = createServerFn({ method: "POST" })
+  .validator((raw: unknown) => {
+    const body = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+    return {
+      lines: orderSchema.parse({ lines: body.lines }),
+      code: readReferralCode(body.code),
+      phone: typeof body.phone === "string" ? body.phone.slice(0, 40) : "",
+      email: typeof body.email === "string" ? body.email.slice(0, 120) : "",
+    };
+  })
+  .handler(async ({ data }) => {
+    const sql = await getSql();
+    const priced: { price: number; qty: number; category: string }[] = [];
+    for (const line of data.lines) {
+      const rows = await sql<{ price: number; category: string }>`
+        select price, category from products where id = ${line.id} and published = true
+      `;
+      if (rows[0]) priced.push({ price: Number(rows[0].price), qty: line.qty, category: rows[0].category });
+    }
+    const result = await quoteFor(priced, data.code, data.phone, data.email);
+    return {
+      subtotal: result.subtotal,
+      discount: result.discount,
+      total: result.total,
+      discounts: result.applied.map(({ label, amount }) => ({ label, amount })),
+      codeStatus: result.codeStatus,
+    };
+  });
+
+export type StudioDiscount = Awaited<ReturnType<typeof loadDiscounts>>[number];
+
+export const listDiscounts = createServerFn({ method: "GET" })
+  .middleware([authMiddleware])
+  .handler(async ({ context }) => {
+    await requireOwner(context.userId);
+    return { discounts: await loadDiscounts(), stackReferral: await stackSetting() };
+  });
+
+const optInt = (min: number, max: number, label: string) =>
+  z
+    .union([z.number(), z.null(), z.undefined()])
+    .transform((value) => (value === undefined ? null : value))
+    .refine((value) => value === null || (Number.isInteger(value) && value >= min && value <= max), `${label}: ${min}–${max}.`);
+
+const optDate = z
+  .union([z.string(), z.null(), z.undefined()])
+  .transform((value) => (value ? value : null))
+  .refine((value) => value === null || !Number.isNaN(Date.parse(value)), "Check the date and time.");
+
+const discountWriteSchema = z.object({
+  id: z.number().int().positive().optional(),
+  type: z.enum(DISCOUNT_TYPES.map((item) => item.id) as [DiscountType, ...DiscountType[]]),
+  name: z.string().trim().max(80, "Keep the name under 80 characters.").default(""),
+  code: z.unknown().transform((value) => parseAgentCode(value)),
+  phone: z.string().trim().max(40).default(""),
+  pct: optInt(0, 90, "Discount %"),
+  amount: optInt(0, 5_000_000, "₹ amount"),
+  cap: optInt(0, 5_000_000, "₹ cap"),
+  minSubtotal: optInt(0, 5_000_000, "Minimum ₹"),
+  minItems: optInt(1, 1000, "Minimum items"),
+  startsAt: optDate,
+  endsAt: optDate,
+  categories: z.array(z.string()).max(40).default([]).transform((ids) =>
+    ids.filter((id) => ALL_CATEGORIES.some((item) => item.id === id)),
+  ),
+  maxUses: optInt(0, 1_000_000, "Max uses"),
+  active: z.boolean().default(false),
+});
+
+/** Codes are unique across agents and every code-carrying discount (case-insensitive). */
+async function assertCodeFree(code: string, except: { agentId?: number; discountId?: number }) {
+  if (!code) return;
+  const sql = await getSql();
+  const rows = await sql<{ c: number }>`
+    select (
+      (select count(*) from referral_agents where code is not null and upper(code) = upper(${code}) and id <> ${except.agentId ?? 0})
+      + (select count(*) from discounts where code is not null and upper(code) = upper(${code}) and id <> ${except.discountId ?? 0})
+    )::int as c
+  `;
+  if (Number(rows[0]?.c ?? 0) > 0) throw new Error(CODE_TAKEN);
+}
+
+export const saveDiscount = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((raw: unknown) => {
+    const parsed = discountWriteSchema.safeParse(raw);
+    if (!parsed.success) throw new Error(parsed.error.issues[0]?.message ?? "Check the discount.");
+    const data = parsed.data;
+    if (data.startsAt && data.endsAt && Date.parse(data.endsAt) <= Date.parse(data.startsAt)) {
+      throw new Error("The end must be after the start.");
+    }
+    if (data.type === "guest" && data.phone) {
+      const phone = normalizeWhatsApp(data.phone);
+      if (!/^\+[1-9]\d{7,14}$/.test(phone)) throw new Error("Add the WhatsApp number with country code, or leave it blank.");
+      data.phone = phone;
+    }
+    return data;
+  })
+  .handler(async ({ context, data }) => {
+    await requireOwner(context.userId);
+    await assertCodeFree(data.code, { discountId: data.id });
+    const sql = await getSql();
+    const code = data.code || null;
+    const categories = JSON.stringify(data.categories);
+    try {
+      if (data.id) {
+        await sql`
+          update discounts set type = ${data.type}, name = ${data.name}, code = ${code}, phone = ${data.phone},
+            pct = ${data.pct}, amount = ${data.amount}, cap = ${data.cap}, min_subtotal = ${data.minSubtotal},
+            min_items = ${data.minItems}, starts_at = ${data.startsAt}, ends_at = ${data.endsAt},
+            categories = ${categories}, max_uses = ${data.maxUses}, active = ${data.active}
+          where id = ${data.id}
+        `;
+        return { id: data.id };
+      }
+      const rows = await sql<{ id: number }>`
+        insert into discounts (type, name, code, phone, pct, amount, cap, min_subtotal, min_items, starts_at, ends_at, categories, max_uses, active)
+        values (${data.type}, ${data.name}, ${code}, ${data.phone}, ${data.pct}, ${data.amount}, ${data.cap},
+          ${data.minSubtotal}, ${data.minItems}, ${data.startsAt}, ${data.endsAt}, ${categories}, ${data.maxUses}, ${data.active})
+        returning id
+      `;
+      return { id: Number(rows[0].id) };
+    } catch (err) {
+      if (isUniqueViolation(err)) throw new Error(CODE_TAKEN);
+      throw err;
+    }
+  });
+
+export const deleteDiscount = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((raw: unknown) => z.number().int().positive().parse(raw))
+  .handler(async ({ context, data: id }) => {
+    await requireOwner(context.userId);
+    const sql = await getSql();
+    await sql`delete from discounts where id = ${id}`;
+    return { ok: true as const };
+  });
+
+export const saveStackSetting = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((raw: unknown) => z.boolean().parse(raw))
+  .handler(async ({ context, data }) => {
+    await requireOwner(context.userId);
+    const sql = await getSql();
+    await sql`update shop set stack_referral = ${data} where id = 1`;
     return { ok: true as const };
   });
