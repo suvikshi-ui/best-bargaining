@@ -379,21 +379,13 @@ function Desk() {
             ))}
           </div>
         </fieldset>
-        <PhotoField
-          image={draft.image}
-          onImage={(image) => setDraft({ ...draft, image })}
+        <ProductPhotoSlots
+          main={draft.image}
+          extras={draft.images}
+          onChange={(image, images) => setDraft({ ...draft, image, images })}
           onError={setMessage}
         />
-        {draft.image ? (
-          <button
-            type="button"
-            onClick={() => setDraft({ ...draft, image: PHOTOS[0].src })}
-            className="mt-2 h-11 text-sm text-clay"
-          >
-            Clear photo
-          </button>
-        ) : null}
-        <p className="mt-3 text-sm text-mist">Or use a shelf photo</p>
+        <p className="mt-3 text-sm text-mist">Or use a shelf photo as Photo 1</p>
         <div className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-5">
           {PHOTOS.map((photo) => (
             <button
@@ -410,13 +402,6 @@ function Desk() {
             </button>
           ))}
         </div>
-        <PhotoListEditor
-          title="More photos (up to 3, shown after the main photo)"
-          photos={draft.images}
-          max={3}
-          onChange={(images) => setDraft({ ...draft, images })}
-          onError={setMessage}
-        />
         <Field label="Description (shown on the product page)" htmlFor="piece-description">
           <textarea
             id="piece-description"
@@ -723,70 +708,99 @@ function PageRow({
   );
 }
 
-function PhotoField({
-  image,
-  onImage,
+/** Four fixed slots: Photo 1 is the main photo (product.image), Photos 2-4 are product.images in order. */
+function ProductPhotoSlots({
+  main,
+  extras,
+  onChange,
   onError,
 }: {
-  image: string;
-  onImage: (image: string) => void;
+  main: string;
+  extras: string[];
+  onChange: (main: string, extras: string[]) => void;
   onError: (message: string) => void;
 }) {
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<number | null>(null);
+  const slots = [main, extras[0] ?? "", extras[1] ?? "", extras[2] ?? ""];
 
-  async function onFile(file: File | undefined) {
+  function commit(next: string[]) {
+    onChange(next[0] ?? "", next.slice(1).filter(Boolean));
+  }
+
+  async function onFile(index: number, file: File | undefined) {
     if (!file) return;
-    setBusy(true);
+    setBusy(index);
     try {
-      onImage(await compressPhoto(file));
+      const photo = await compressPhoto(file);
+      const next = [...slots];
+      // An empty extra slot fills the next open position so photos stay in order.
+      if (index > 0 && !next[index]) {
+        const open = next.findIndex((value, i) => i > 0 && !value);
+        next[open === -1 ? index : open] = photo;
+      } else next[index] = photo;
+      commit(next);
       onError("");
     } catch (err) {
       onError(err instanceof Error ? err.message : "Could not use that photo.");
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
   }
 
+  function remove(index: number) {
+    const next = [...slots];
+    next[index] = "";
+    commit(next);
+  }
+
   return (
-    <div className="mt-4">
-      <p className="text-sm text-mist">Photo</p>
-      <label className="mt-2 block max-w-xs cursor-pointer">
-        <span className="grid aspect-square place-items-center overflow-hidden rounded-3xl border border-dashed border-ink/20 bg-paper">
-          {image ? (
-            <img src={image} alt="Chosen photo" className="h-full w-full object-cover" />
-          ) : (
-            <span className="px-6 text-center text-sm text-mist">
-              {busy ? "Reading photo…" : "Tap to take a photo"}
-            </span>
-          )}
-        </span>
-        <input
-          type="file"
-          accept="image/*"
-          capture="environment"
-          className="sr-only"
-          onChange={(event) => {
-            void onFile(event.target.files?.[0]);
-            event.target.value = "";
-          }}
-        />
-      </label>
-      <label className="mt-3 inline-flex h-11 cursor-pointer items-center text-sm text-clay">
-        Upload from gallery
-        <input
-          type="file"
-          accept="image/*"
-          className="sr-only"
-          onChange={(event) => {
-            void onFile(event.target.files?.[0]);
-            event.target.value = "";
-          }}
-        />
-      </label>
+    <div className="mt-4" data-testid="photo-slots">
+      <p className="text-sm text-mist">Photos (Photo 1 is the main photo; all four show on the product page in order)</p>
+      <ul className="mt-2 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {slots.map((photo, index) => {
+          const label = index === 0 ? "Photo 1 (main)" : `Photo ${index + 1}`;
+          return (
+            <li key={index} className="rounded-2xl bg-paper p-2" data-testid={`photo-slot-${index + 1}`}>
+              <p className="text-xs font-medium">{label}</p>
+              <div className="mt-1 grid aspect-square place-items-center overflow-hidden rounded-xl border border-dashed border-ink/20">
+                {photo ? (
+                  <img src={photo} alt={label} className="h-full w-full object-cover" />
+                ) : (
+                  <span className="px-2 text-center text-xs text-mist">{busy === index ? "Reading photo…" : "Empty"}</span>
+                )}
+              </div>
+              <div className="mt-1 flex items-center justify-between text-xs">
+                <label className="inline-flex h-8 cursor-pointer items-center text-clay">
+                  {photo ? "Replace" : "Upload"}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="sr-only"
+                    aria-label={`${photo ? "Replace" : "Upload"} ${label}`}
+                    onChange={(event) => {
+                      void onFile(index, event.target.files?.[0]);
+                      event.target.value = "";
+                    }}
+                  />
+                </label>
+                {photo ? (
+                  <button type="button" className="h-8 px-1 text-clay" onClick={() => remove(index)} aria-label={`Remove ${label}`}>
+                    Remove
+                  </button>
+                ) : null}
+              </div>
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }
 
+/** Target ≈200 KB per photo: data: URL chars ≈ bytes × 1.37. */
+const PHOTO_TARGET_CHARS = 266_000;
+
+/** Resize to max 1200px on the longest side and encode WebP (JPEG fallback), lowering quality until ≈200 KB. */
 function compressPhoto(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -794,20 +808,28 @@ function compressPhoto(file: File): Promise<string> {
     reader.onload = () => {
       const img = new Image();
       img.onload = () => {
-        const max = 960;
-        const scale = Math.min(1, max / Math.max(img.width, img.height));
-        const width = Math.max(1, Math.round(img.width * scale));
-        const height = Math.max(1, Math.round(img.height * scale));
-        const canvas = document.createElement("canvas");
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext("2d");
+        let max = 1200;
+        const ctx = document.createElement("canvas").getContext("2d");
         if (!ctx) {
           reject(new Error("Could not use that photo."));
           return;
         }
-        ctx.drawImage(img, 0, 0, width, height);
-        resolve(canvas.toDataURL("image/jpeg", 0.82));
+        const canvas = ctx.canvas;
+        let out = "";
+        for (let attempt = 0; attempt < 8; attempt++) {
+          const scale = Math.min(1, max / Math.max(img.width, img.height));
+          canvas.width = Math.max(1, Math.round(img.width * scale));
+          canvas.height = Math.max(1, Math.round(img.height * scale));
+          ctx.fillStyle = "#fff";
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          const quality = Math.max(0.5, 0.8 - attempt * 0.08);
+          out = canvas.toDataURL("image/webp", quality);
+          if (!out.startsWith("data:image/webp")) out = canvas.toDataURL("image/jpeg", quality);
+          if (out.length <= PHOTO_TARGET_CHARS) break;
+          if (quality <= 0.5) max = Math.round(max * 0.8);
+        }
+        resolve(out);
       };
       img.onerror = () => reject(new Error("That file is not a photo."));
       img.src = String(reader.result);

@@ -199,6 +199,16 @@ const photoSchema = z
   .max(1_500_000, "That photo is too large. Try another.")
   .refine(isPhotoValue, "Add a photo (upload, or an https:// link).");
 
+/** Per product photo cap on the stored data: URL (≈ 450 KB of image). The studio compresses to ~200 KB. */
+export const PRODUCT_PHOTO_MAX_CHARS = 600_000;
+const PHOTO_TOO_LARGE = "That photo is too large (over about 450 KB). Upload it again so the studio can shrink it.";
+
+const productPhotoSchema = z
+  .string()
+  .min(1)
+  .max(PRODUCT_PHOTO_MAX_CHARS, PHOTO_TOO_LARGE)
+  .refine(isPhotoValue, "Add a photo (upload, or an https:// link).");
+
 export const shopSettingsSchema = z.object({
   navCategories: z.array(z.string()).max(40).transform((ids) =>
     ids.filter((id) => CATEGORIES.some((item) => item.id === id)),
@@ -222,20 +232,20 @@ export const productWriteSchema = z.object({
   blurb: z.string().trim().max(400, "Keep the note under 400 characters."),
   image: z
     .string()
-    .min(1, "Add a photo.")
-    .max(1_500_000, "That photo is too large. Try another.")
+    .min(1, "Add Photo 1 (the main photo).")
+    .max(PRODUCT_PHOTO_MAX_CHARS, `Photo 1: ${PHOTO_TOO_LARGE}`)
     .refine(
       (value) =>
         PHOTO_SRC.includes(value) ||
         value.startsWith("data:image/jpeg") ||
         value.startsWith("data:image/png") ||
         value.startsWith("data:image/webp"),
-      "Add a photo.",
+      "Add Photo 1 (the main photo).",
     ),
   badge: z.enum(["", "new", "best"]),
   published: z.boolean(),
   compareAt: z.number().int().min(0).max(5_000_000),
-  images: z.array(photoSchema).max(3, "Up to 3 extra photos.").default([]),
+  images: z.array(productPhotoSchema).max(3, "Up to 3 extra photos (Photos 2-4).").default([]),
   description: z.string().trim().max(4000, "Keep the description under 4000 characters.").default(""),
   showDescription: z.boolean().default(true),
 });
