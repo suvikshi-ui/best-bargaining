@@ -13,6 +13,9 @@ import {
   type ShopCustomer,
   type ShopOrder,
   type SitePage,
+  type ShopSettings,
+  parseJsonList,
+  shopSettingsSchema,
 } from "@/lib/shop/catalog";
 
 /**
@@ -92,7 +95,7 @@ export const getProduct = createServerFn({ method: "GET" })
     if (id < 1) return null;
     const sql = await getSql();
     const rows = await sql<Product>`
-      select id, name, category, price, compare_at, stock, blurb, image, badge, published
+      select id, name, category, price, compare_at, stock, blurb, image, badge, published, images, description, show_description
       from products
       where id = ${id} and published = true
     `;
@@ -145,7 +148,7 @@ export const getStudio = createServerFn({ method: "GET" })
     }
     const sql = await getSql();
     const products = await sql<Product>`
-      select id, name, category, price, compare_at, stock, blurb, image, badge, published
+      select id, name, category, price, compare_at, stock, blurb, image, badge, published, images, description, show_description
       from products
       where user_id = ${context.userId}
       order by id desc
@@ -275,7 +278,10 @@ export const saveProduct = createServerFn({ method: "POST" })
           image = ${data.image},
           badge = ${data.badge},
           published = ${data.published},
-          compare_at = ${data.compareAt > 0 ? data.compareAt : null}
+          compare_at = ${data.compareAt > 0 ? data.compareAt : null},
+          images = ${JSON.stringify(data.images)},
+          description = ${data.description},
+          show_description = ${data.showDescription}
         where id = ${data.id} and user_id = ${context.userId}
         returning id
       `;
@@ -283,7 +289,7 @@ export const saveProduct = createServerFn({ method: "POST" })
       return { id: Number(rows[0].id) };
     }
     const rows = await sql<{ id: number }>`
-      insert into products (user_id, name, category, price, compare_at, stock, blurb, image, badge, published)
+      insert into products (user_id, name, category, price, compare_at, stock, blurb, image, badge, published, images, description, show_description)
       values (
         ${context.userId},
         ${data.name},
@@ -294,7 +300,10 @@ export const saveProduct = createServerFn({ method: "POST" })
         ${data.blurb},
         ${data.image},
         ${data.badge},
-        ${data.published}
+        ${data.published},
+        ${JSON.stringify(data.images)},
+        ${data.description},
+        ${data.showDescription}
       )
       returning id
     `;
@@ -526,3 +535,34 @@ export const saveBag = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+
+export const getShopSettings = createServerFn({ method: "GET" }).handler(async (): Promise<ShopSettings> => {
+  const sql = await getSql();
+  const rows = await sql<{ nav_categories: string | null; hero_slides: string | null }>`
+    select nav_categories, hero_slides from shop where id = 1
+  `;
+  return {
+    navCategories: parseJsonList(rows[0]?.nav_categories),
+    heroSlides: parseJsonList(rows[0]?.hero_slides).slice(0, 4),
+  };
+});
+
+export const saveShopSettings = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((raw: unknown): ShopSettings => {
+    const parsed = shopSettingsSchema.safeParse(raw);
+    if (!parsed.success) throw new Error(parsed.error.issues[0]?.message ?? "Check the settings.");
+    return parsed.data;
+  })
+  .handler(async ({ context, data }) => {
+    const role = await ensureOwner(context.userId);
+    if (role !== "owner") throw new Error("Only the shop owner can change settings.");
+    const sql = await getSql();
+    await sql`
+      update shop set
+        nav_categories = ${JSON.stringify(data.navCategories)},
+        hero_slides = ${JSON.stringify(data.heroSlides)}
+      where id = 1
+    `;
+    return { ok: true as const };
+  });

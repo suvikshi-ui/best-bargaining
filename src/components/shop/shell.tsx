@@ -1,7 +1,9 @@
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { Search, ShoppingBag, Store } from "lucide-react";
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { cn } from "@/lib/cn";
+import { getShopSettings } from "@/lib/shop/api";
 import { useCart } from "@/lib/shop/cart";
 import { BagSync } from "@/components/shop/bag-sync";
 import { CATEGORIES, readCat, type ShopCat } from "@/lib/shop/catalog";
@@ -13,13 +15,21 @@ function useBagCount() {
   return ready ? count : 0;
 }
 
-const CATS: { id: ShopCat; label: string }[] = [
-  { id: "all", label: "Home" },
-  ...CATEGORIES.map((item) => ({ id: item.id, label: item.label })),
-];
+/** Fallback when the owner has not saved a menu yet: Home only. */
+const DEFAULT_NAV_CATEGORY_IDS: string[] = [];
+
+function useNavCats(): { id: ShopCat; label: string }[] {
+  const settings = useQuery({ queryKey: ["shop-settings"], queryFn: () => getShopSettings(), staleTime: 60_000 });
+  const ids = settings.data?.navCategories ?? DEFAULT_NAV_CATEGORY_IDS;
+  return [
+    { id: "all", label: "Home" },
+    ...CATEGORIES.filter((item) => ids.includes(item.id)).map((item) => ({ id: item.id, label: item.label })),
+  ];
+}
 
 export function ShopShell({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
+  const cats = useNavCats();
   const path = useRouterState({ select: (state) => state.location.pathname });
   const current = useRouterState({
     select: (state) => readCat((state.location.search as { cat?: unknown }).cat),
@@ -80,7 +90,7 @@ export function ShopShell({ children }: { children: ReactNode }) {
         </div>
         <nav className="overflow-x-auto border-t border-ink/10" aria-label="Categories">
           <div className="mx-auto flex max-w-7xl gap-6 px-4 md:px-8">
-            {CATS.map((item) => {
+            {cats.map((item) => {
               const on = path === "/" && current === item.id;
               return (
                 <Link

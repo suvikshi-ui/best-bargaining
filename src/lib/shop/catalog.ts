@@ -71,6 +71,10 @@ export type Product = {
   badge: "" | "new" | "best";
   published: boolean;
   compareAt: number;
+  /** Extra photos after `image` (max 3). Only loaded on product page and studio. */
+  images?: string[];
+  description?: string;
+  showDescription?: boolean;
 };
 
 export type OrderItem = {
@@ -141,6 +145,37 @@ export const customerSchema = z.object({
 
 export type CustomerDetails = z.infer<typeof customerSchema>;
 
+export function isPhotoValue(value: string) {
+  return (
+    PHOTO_SRC.includes(value) ||
+    /^\/products\/[\w.-]+$/.test(value) ||
+    value.startsWith("data:image/jpeg") ||
+    value.startsWith("data:image/png") ||
+    value.startsWith("data:image/webp") ||
+    /^https:\/\/[^\s"'<>]+$/.test(value)
+  );
+}
+
+const photoSchema = z
+  .string()
+  .min(1)
+  .max(1_500_000, "That photo is too large. Try another.")
+  .refine(isPhotoValue, "Add a photo (upload, or an https:// link).");
+
+export const shopSettingsSchema = z.object({
+  navCategories: z.array(z.string()).max(40).transform((ids) =>
+    ids.filter((id) => CATEGORIES.some((item) => item.id === id)),
+  ),
+  heroSlides: z.array(photoSchema).max(4, "Up to 4 slider photos."),
+});
+
+export type ShopSettings = z.infer<typeof shopSettingsSchema>;
+
+export function parseJsonList(value: unknown): string[] {
+  const raw = typeof value === "string" ? safeParse(value) : value;
+  return Array.isArray(raw) ? raw.filter((item): item is string => typeof item === "string") : [];
+}
+
 export const productWriteSchema = z.object({
   id: z.number().int().positive().optional(),
   name: z.string().trim().min(1, "Name the piece.").max(80, "Keep the name shorter."),
@@ -163,6 +198,9 @@ export const productWriteSchema = z.object({
   badge: z.enum(["", "new", "best"]),
   published: z.boolean(),
   compareAt: z.number().int().min(0).max(5_000_000),
+  images: z.array(photoSchema).max(3, "Up to 3 extra photos.").default([]),
+  description: z.string().trim().max(4000, "Keep the description under 4000 characters.").default(""),
+  showDescription: z.boolean().default(true),
 });
 
 export type ProductWrite = z.infer<typeof productWriteSchema>;
@@ -198,7 +236,9 @@ export function inr(value: number) {
   return money.format(value);
 }
 
-export function asProduct(row: Product & { compare_at?: number | null }): Product {
+export function asProduct(
+  row: Product & { compare_at?: number | null; show_description?: boolean | null },
+): Product {
   const badge = row.badge === "new" || row.badge === "best" ? row.badge : "";
   const known = CATEGORIES.some((item) => item.id === row.category);
   const category = known ? (row.category as CategoryId) : CATEGORIES[0].id;
@@ -213,6 +253,9 @@ export function asProduct(row: Product & { compare_at?: number | null }): Produc
     badge,
     published: Boolean(row.published),
     compareAt: Math.max(0, Number(row.compareAt || row.compare_at || 0)),
+    ...("images" in row ? { images: parseJsonList(row.images).slice(0, 3) } : {}),
+    ...("description" in row ? { description: row.description ?? "" } : {}),
+    ...("show_description" in row ? { showDescription: row.show_description !== false } : {}),
   };
 }
 

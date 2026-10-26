@@ -6,7 +6,15 @@ import { requireStudioHost } from "@/lib/studio/host";
 import { ShopShell } from "@/components/shop/shell";
 import { UserButton } from "@/lib/auth/gates";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
-import { deleteProduct, getPages, getStudio, savePage, saveProduct } from "@/lib/shop/api";
+import {
+  deleteProduct,
+  getPages,
+  getShopSettings,
+  getStudio,
+  savePage,
+  saveProduct,
+  saveShopSettings,
+} from "@/lib/shop/api";
 import {
   CATEGORIES,
   PHOTOS,
@@ -40,6 +48,9 @@ type Draft = {
   badge: "" | "new" | "best";
   published: boolean;
   compare: string;
+  images: string[];
+  description: string;
+  showDescription: boolean;
 };
 
 const emptyDraft = (): Draft => ({
@@ -52,6 +63,9 @@ const emptyDraft = (): Draft => ({
   badge: "",
   published: true,
   compare: "",
+  images: [],
+  description: "",
+  showDescription: true,
 });
 
 function Studio() {
@@ -180,6 +194,9 @@ function Desk() {
       badge: product.badge,
       published: product.published,
       compare: product.compareAt > 0 ? String(product.compareAt) : "",
+      images: product.images ?? [],
+      description: product.description ?? "",
+      showDescription: product.showDescription ?? true,
     });
     document.getElementById("desk-form")?.scrollIntoView({ block: "start" });
   }
@@ -200,6 +217,7 @@ function Desk() {
           badge: product.badge,
           published: product.published,
           compareAt: product.compareAt,
+          ...keepExtras(product),
         },
       });
       await refresh();
@@ -233,6 +251,7 @@ function Desk() {
           badge: product.badge,
           published: product.published,
           compareAt: product.compareAt,
+          ...keepExtras(product),
         },
       });
       if (draft.id === product.id) setDraft({ ...draft, image });
@@ -385,6 +404,32 @@ function Desk() {
             </button>
           ))}
         </div>
+        <PhotoListEditor
+          title="More photos (up to 3, shown after the main photo)"
+          photos={draft.images}
+          max={3}
+          onChange={(images) => setDraft({ ...draft, images })}
+          onError={setMessage}
+        />
+        <Field label="Description (shown on the product page)" htmlFor="piece-description">
+          <textarea
+            id="piece-description"
+            value={draft.description}
+            maxLength={4000}
+            rows={5}
+            onChange={(event) => setDraft({ ...draft, description: event.target.value })}
+            className="mt-2 w-full rounded-2xl border border-ink/15 bg-paper px-3 py-2 text-sm text-ink outline-none focus:border-clay"
+          />
+        </Field>
+        <label className="mt-2 flex h-11 items-center gap-3 text-sm">
+          <input
+            type="checkbox"
+            checked={draft.showDescription}
+            onChange={(event) => setDraft({ ...draft, showDescription: event.target.checked })}
+            className="size-4 accent-clay"
+          />
+          Show the description on the product page
+        </label>
         <label className="mt-4 flex h-11 items-center gap-3 text-sm">
           <input
             type="checkbox"
@@ -544,6 +589,7 @@ function Desk() {
         </ul>
       )}
 
+      <StorefrontSettings />
       <OrdersTable orders={studio.data.orders} />
     </div>
   );
@@ -561,10 +607,19 @@ function Desk() {
         badge: product.badge,
         published,
         compareAt: product.compareAt,
+        ...keepExtras(product),
       },
     });
     await refresh();
   }
+}
+
+function keepExtras(product: Product) {
+  return {
+    images: product.images ?? [],
+    description: product.description ?? "",
+    showDescription: product.showDescription ?? true,
+  };
 }
 
 const inputClass =
@@ -878,4 +933,180 @@ function formatOrderDate(value: string): string {
     hour: "numeric",
     minute: "2-digit",
   });
+}
+
+function PhotoListEditor({
+  title,
+  photos,
+  max,
+  onChange,
+  onError,
+}: {
+  title: string;
+  photos: string[];
+  max: number;
+  onChange: (photos: string[]) => void;
+  onError: (message: string) => void;
+}) {
+  const [url, setUrl] = useState("");
+  const [busy, setBusy] = useState(false);
+  const full = photos.length >= max;
+
+  function move(index: number, delta: number) {
+    const next = [...photos];
+    const target = index + delta;
+    if (target < 0 || target >= next.length) return;
+    [next[index], next[target]] = [next[target]!, next[index]!];
+    onChange(next);
+  }
+
+  async function onFile(file: File | undefined) {
+    if (!file || full) return;
+    setBusy(true);
+    try {
+      onChange([...photos, await compressPhoto(file)]);
+      onError("");
+    } catch (err) {
+      onError(err instanceof Error ? err.message : "Could not use that photo.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function addUrl() {
+    const value = url.trim();
+    if (!value || full) return;
+    if (!/^https:\/\/\S+$/.test(value) && !value.startsWith("/")) {
+      onError("Use an https:// photo link.");
+      return;
+    }
+    onChange([...photos, value]);
+    setUrl("");
+    onError("");
+  }
+
+  return (
+    <div className="mt-4">
+      <p className="text-sm text-mist">{title}</p>
+      {photos.length > 0 ? (
+        <ul className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
+          {photos.map((photo, index) => (
+            <li key={`${index}-${photo.slice(0, 40)}`} className="rounded-2xl bg-paper p-1">
+              <img src={photo} alt={`Photo ${index + 1}`} className="aspect-square w-full rounded-xl object-cover" />
+              <div className="mt-1 flex justify-between text-xs">
+                <button type="button" className="h-8 px-2" onClick={() => move(index, -1)} disabled={index === 0}>
+                  ←
+                </button>
+                <button
+                  type="button"
+                  className="h-8 px-2 text-clay"
+                  onClick={() => onChange(photos.filter((_, i) => i !== index))}
+                >
+                  Remove
+                </button>
+                <button
+                  type="button"
+                  className="h-8 px-2"
+                  onClick={() => move(index, 1)}
+                  disabled={index === photos.length - 1}
+                >
+                  →
+                </button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {full ? null : (
+        <div className="mt-2 flex flex-wrap items-center gap-3">
+          <label className="inline-flex h-11 cursor-pointer items-center text-sm text-clay">
+            {busy ? "Reading photo…" : "Upload a photo"}
+            <input
+              type="file"
+              accept="image/*"
+              className="sr-only"
+              onChange={(event) => {
+                void onFile(event.target.files?.[0]);
+                event.target.value = "";
+              }}
+            />
+          </label>
+          <input
+            type="url"
+            value={url}
+            onChange={(event) => setUrl(event.target.value)}
+            placeholder="or paste https:// photo link"
+            className="h-11 min-w-0 flex-1 rounded-2xl border border-ink/15 bg-paper px-3 text-sm"
+          />
+          <button type="button" onClick={addUrl} className="h-11 rounded-full border border-ink/15 px-4 text-sm">
+            Add
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function StorefrontSettings() {
+  const queryClient = useQueryClient();
+  const settings = useQuery({ queryKey: ["shop-settings"], queryFn: () => getShopSettings() });
+  const [nav, setNav] = useState<string[] | null>(null);
+  const [slides, setSlides] = useState<string[] | null>(null);
+  const [message, setMessage] = useState("");
+  const navValue = nav ?? settings.data?.navCategories ?? [];
+  const slidesValue = slides ?? settings.data?.heroSlides ?? [];
+  const save = useMutation({
+    mutationFn: () => saveShopSettings({ data: { navCategories: navValue, heroSlides: slidesValue } }),
+    onSuccess: async () => {
+      setMessage("Saved. The shop shows the new menu and slider.");
+      await queryClient.invalidateQueries({ queryKey: ["shop-settings"] });
+    },
+    onError: (err) => setMessage(err instanceof Error ? err.message : "Could not save."),
+  });
+
+  return (
+    <section className="mt-10">
+      <h2 className="text-3xl font-semibold">Storefront</h2>
+      <p className="mt-1 text-sm text-mist">Home is always in the top menu. Tick the categories to show next to it.</p>
+      <div className="mt-3 grid grid-cols-2 gap-1 sm:grid-cols-3">
+        {CATEGORIES.map((category) => (
+          <label key={category.id} className="flex h-10 items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              className="size-4 accent-clay"
+              checked={navValue.includes(category.id)}
+              onChange={(event) =>
+                setNav(
+                  event.target.checked
+                    ? CATEGORIES.map((c) => c.id).filter((id) => id === category.id || navValue.includes(id))
+                    : navValue.filter((id) => id !== category.id),
+                )
+              }
+            />
+            {category.label}
+          </label>
+        ))}
+      </div>
+      <PhotoListEditor
+        title="Home slider photos (up to 4, in order). Empty = default photos."
+        photos={slidesValue}
+        max={4}
+        onChange={setSlides}
+        onError={setMessage}
+      />
+      <button
+        type="button"
+        onClick={() => save.mutate()}
+        disabled={save.isPending || settings.isPending}
+        className="mt-4 h-11 rounded-full bg-ink px-5 text-sm text-paper"
+      >
+        {save.isPending ? "Saving…" : "Save storefront"}
+      </button>
+      {message ? (
+        <p className="mt-2 text-sm text-clay" role="status">
+          {message}
+        </p>
+      ) : null}
+    </section>
+  );
 }

@@ -46,19 +46,18 @@ function Piece() {
         Home
       </Link>
       <div className="mt-4 grid items-start gap-6 md:grid-cols-2">
-        <div className="overflow-hidden border border-ink/10 bg-card">
-          <img
-            src={product.image}
-            alt={product.name}
-            className="aspect-square w-full object-cover"
-          />
-        </div>
+        <ProductGallery photos={[product.image, ...(product.images ?? [])]} name={product.name} />
         <div>
           <p className="text-sm text-mist">
             {category.label} · {category.hindi}
           </p>
           <h1 className="mt-2 text-3xl font-semibold leading-tight md:text-4xl">{product.name}</h1>
           <p className="mt-3 max-w-md text-sm text-mist">{product.blurb}</p>
+          {product.description && product.showDescription !== false ? (
+            <div className="mt-4 max-w-md whitespace-pre-line text-sm leading-relaxed" data-testid="product-description">
+              {product.description}
+            </div>
+          ) : null}
           <div className="mt-5 flex flex-wrap items-center gap-3">
             <p className="text-3xl font-semibold tabular-nums">{inr(product.price)}</p>
             {offPercent(product.price, product.compareAt) > 0 && (
@@ -115,3 +114,31 @@ function Piece() {
   );
 }
 
+
+function ProductGallery({ photos, name }: { photos: string[]; name: string }) {
+  const list = photos.filter(Boolean).slice(0, 4);
+  const [active, setActive] = useState(0);
+  const shown = list[Math.min(active, list.length - 1)] ?? "";
+  return (
+    <div data-testid="product-gallery">
+      <div className="overflow-hidden border border-ink/10 bg-card">
+        <img src={shown} alt={name} className="aspect-square w-full object-cover" />
+      </div>
+      {list.length > 1 ? (
+        <div className="mt-2 grid grid-cols-4 gap-2">
+          {list.map((photo, i) => (
+            <button
+              key={`${i}-${photo.slice(0, 40)}`}
+              type="button"
+              aria-label={`Show photo ${i + 1}`}
+              onClick={() => setActive(i)}
+              className={i === active ? "border-2 border-clay" : "border-2 border-transparent"}
+            >
+              <img src={photo} alt="" loading="lazy" className="aspect-square w-full object-cover" />
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}

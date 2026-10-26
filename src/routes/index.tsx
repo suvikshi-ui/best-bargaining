@@ -2,11 +2,11 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { useMemo } from "react";
 import { ProductCard } from "@/components/shop/product-card";
+import { HeroCarousel } from "@/components/shop/hero-carousel";
 import { ShopShell } from "@/components/shop/shell";
 import { getPages, listProducts } from "@/lib/shop/api";
 import {
   CATEGORIES,
-  HERO,
   categoryOf,
   offPercent,
   readCat,
@@ -53,14 +53,9 @@ function Home() {
     <ShopShell>
       {browsing ? (
         <>
-          <section className="relative left-1/2 w-screen max-w-[100vw] -translate-x-1/2 overflow-hidden bg-ink">
-            <img
-              src={HERO}
-              alt="A rainy windowsill with wooden toys and a candle"
-              className="h-56 w-full object-cover md:h-[420px]"
-            />
+          <HeroCarousel>
             <div className="absolute inset-0 bg-gradient-to-r from-black/75 via-black/35 to-transparent" />
-            <div className="absolute inset-0 flex flex-col justify-end p-5 md:p-12">
+            <div className="absolute inset-0 flex flex-col justify-end p-5 pb-10 md:p-12">
               <p className="text-xs font-semibold tracking-wide text-white uppercase">Best Bargain</p>
               <h1 className="mt-2 max-w-xl text-3xl font-semibold leading-tight text-white md:text-5xl">
                 {pageOf("home")?.title || "Gadgets, kitchen, fashion, and the rest of the house."}
@@ -73,7 +68,7 @@ function Home() {
                 Shop now
               </a>
             </div>
-          </section>
+          </HeroCarousel>
 
           <div className="mt-4 flex gap-4 overflow-x-auto pb-2">
             {CATEGORIES.map((category) => {
