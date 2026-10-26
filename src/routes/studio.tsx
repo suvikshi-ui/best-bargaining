@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { OwnerSignButtons } from "@/components/shop/sign-buttons";
+import { ChangePassword } from "@/components/studio/change-password";
 import { requireStudioHost } from "@/lib/studio/host";
 import { ShopShell } from "@/components/shop/shell";
 import { UserButton } from "@/lib/auth/gates";
@@ -595,6 +596,7 @@ function Desk() {
 
       <StorefrontSettings />
       <ReferralAgents />
+      <ChangePassword />
       <OrdersTable orders={studio.data.orders} />
     </div>
   );
