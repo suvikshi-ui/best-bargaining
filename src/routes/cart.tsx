@@ -2,9 +2,9 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { ShopShell } from "@/components/shop/shell";
-import { placeOrder, listProducts } from "@/lib/shop/api";
+import { checkReferral, placeOrder, listProducts } from "@/lib/shop/api";
 import { useCart } from "@/lib/shop/cart";
-import { inr, customerSchema, type OrderItem } from "@/lib/shop/catalog";
+import { discountFor, inr, customerSchema, readReferralCode, type OrderItem } from "@/lib/shop/catalog";
 
 export const Route = createFileRoute("/cart")({
   loader: () => listProducts(),
@@ -18,6 +18,8 @@ type Receipt = {
   name: string;
   phone: string;
   email: string;
+  discount?: number;
+  referralCode?: string;
 };
 
 const RECEIPT_KEY = "rainside-receipt";
@@ -38,6 +40,14 @@ function Bag() {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
+  const [referral, setReferral] = useState("");
+  const referralCode = readReferralCode(referral);
+  const referralCheck = useQuery({
+    queryKey: ["referral", referralCode],
+    queryFn: () => checkReferral({ data: referralCode }),
+    enabled: referralCode.length >= 4,
+    staleTime: 60_000,
+  });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [receipt, setReceipt] = useState<Receipt | null>(null);
@@ -60,6 +70,8 @@ function Bag() {
     })
     .filter((row) => row.product);
   const total = rows.reduce((sum, row) => sum + (row.product?.price ?? 0) * row.line.qty, 0);
+  const referralPct = referralCheck.data?.discountPct ?? 0;
+  const discount = referralCheck.data ? discountFor(total, referralPct) : 0;
   const blocked = rows.some((row) => row.product && row.line.qty > row.product.stock);
 
   async function checkout() {
@@ -76,6 +88,7 @@ function Bag() {
         data: {
           lines: rows.map((row) => ({ id: row.line.id, qty: row.line.qty })),
           customer: customer.data,
+          referralCode,
         },
       });
       const next: Receipt = {
@@ -85,6 +98,8 @@ function Bag() {
         name: customer.data.name,
         phone: customer.data.phone,
         email: customer.data.email,
+        discount: result.discount,
+        referralCode: result.referralCode,
       };
       sessionStorage.setItem(RECEIPT_KEY, JSON.stringify(next));
       setReceipt(next);
@@ -92,6 +107,7 @@ function Bag() {
       setName("");
       setPhone("");
       setEmail("");
+      setReferral("");
       await queryClient.invalidateQueries({ queryKey: ["products"] });
       await queryClient.invalidateQueries({ queryKey: ["my-orders"] });
       await queryClient.invalidateQueries({ queryKey: ["my-bag"] });
@@ -120,6 +136,11 @@ function Bag() {
               </li>
             ))}
           </ul>
+          {receipt.discount ? (
+            <p className="mt-3 text-sm text-paper/80">
+              Referral {receipt.referralCode}: −{inr(receipt.discount)}
+            </p>
+          ) : null}
           <p className="mt-4 font-display text-2xl tabular-nums">{inr(receipt.total)}</p>
           {receipt.name ? (
             <>
@@ -207,7 +228,12 @@ function Bag() {
           </ul>
           <aside className="h-fit rounded-3xl bg-card p-5">
             <p className="text-sm text-mist">Total</p>
-            <p className="font-display text-4xl tabular-nums">{inr(total)}</p>
+            {discount > 0 ? (
+              <p className="text-sm text-mist tabular-nums" data-testid="referral-discount">
+                Subtotal {inr(total)} · Referral {referralPct}% −{inr(discount)}
+              </p>
+            ) : null}
+            <p className="font-display text-4xl tabular-nums">{inr(total - discount)}</p>
             <label className="mt-4 block text-sm text-mist" htmlFor="customer-name">
               Customer name
             </label>
@@ -245,6 +271,24 @@ function Bag() {
               onChange={(event) => setEmail(event.target.value)}
               className="mt-2 h-11 w-full rounded-2xl border border-ink/15 bg-paper px-3 text-sm outline-none focus:border-clay"
             />
+            <label className="mt-3 block text-sm text-mist" htmlFor="referral-code">
+              Referral code (optional)
+            </label>
+            <input
+              id="referral-code"
+              name="referral-code"
+              autoComplete="off"
+              autoCapitalize="characters"
+              value={referral}
+              onChange={(event) => setReferral(event.target.value)}
+              placeholder="e.g. VIK123"
+              className="mt-2 h-11 w-full rounded-2xl border border-ink/15 bg-paper px-3 text-sm uppercase outline-none focus:border-clay"
+            />
+            {referralCode.length >= 4 && referralCheck.isFetched && !referralCheck.data ? (
+              <p className="mt-1 text-xs text-clay">That code is not valid.</p>
+            ) : referralCheck.data ? (
+              <p className="mt-1 text-xs text-mist">{referralPct}% off applied.</p>
+            ) : null}
             {error && (
               <p className="mt-3 text-sm text-clay" role="alert">
                 {error}

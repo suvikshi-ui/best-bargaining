@@ -13,6 +13,9 @@ import {
   type ShopCustomer,
   type ShopOrder,
   type SitePage,
+  type ReferralAgent,
+  discountFor,
+  readReferralCode,
   type ShopSettings,
   parseJsonList,
   shopSettingsSchema,
@@ -163,9 +166,12 @@ export const getStudio = createServerFn({ method: "GET" })
       customer_email: string;
       account_email: string;
       user_id: string;
+      referral_code: string | null;
+      discount_amount: number | null;
     }>`
       select id, items, total, created_at::text as created_at,
-        customer_name, customer_phone, customer_email, account_email, user_id
+        customer_name, customer_phone, customer_email, account_email, user_id,
+        referral_code, discount_amount
       from orders
       order by id desc
       limit 80
@@ -206,6 +212,8 @@ export const getStudio = createServerFn({ method: "GET" })
       customerEmail: order.customer_email ?? "",
       accountEmail: order.account_email ?? "",
       userId: order.user_id ?? "",
+      referralCode: order.referral_code ?? "",
+      discountAmount: Number(order.discount_amount ?? 0),
     }));
     const byUser = new Map<string, ShopCustomer>();
     for (const profile of profiles) {
@@ -356,17 +364,19 @@ function zLines() {
 export const placeOrder = createServerFn({ method: "POST" })
   .validator((raw: unknown) => {
     if (!raw || typeof raw !== "object") throw new Error("The bag is empty.");
-    const body = raw as { lines?: unknown; customer?: unknown };
+    const body = raw as { lines?: unknown; customer?: unknown; referralCode?: unknown };
     const lines = orderSchema.parse({ lines: body.lines });
     const customer = customerSchema.safeParse(body.customer);
     if (!customer.success) {
       throw new Error(customer.error.issues[0]?.message ?? "Add the customer details.");
     }
-    return { lines, customer: customer.data };
+    return { lines, customer: customer.data, referralCode: readReferralCode(body.referralCode) };
   })
   .handler(async ({ data }) => {
-    const { lines, customer } = data;
+    const { lines, customer, referralCode } = data;
     const sql = await getSql();
+    const agent = referralCode ? await findActiveAgent(referralCode) : null;
+    if (referralCode && !agent) throw new Error("That referral code is not valid.");
     const picked: { id: number; name: string; price: number; qty: number }[] = [];
     for (const line of lines) {
       const rows = await sql<{ id: number; name: string; price: number; stock: number }>`
@@ -396,9 +406,11 @@ export const placeOrder = createServerFn({ method: "POST" })
         if (!rows.length) throw new Error(`${line.name} just sold out.`);
         held.push(line);
       }
-      const total = picked.reduce((sum, line) => sum + line.price * line.qty, 0);
+      const subtotal = picked.reduce((sum, line) => sum + line.price * line.qty, 0);
+      const discount = agent ? discountFor(subtotal, agent.discountPct) : 0;
+      const total = subtotal - discount;
       const inserted = await sql<{ id: number }>`
-        insert into orders (items, total, customer_name, customer_phone, customer_email, account_email, user_id)
+        insert into orders (items, total, customer_name, customer_phone, customer_email, account_email, user_id, referral_code, referral_agent_id, discount_amount)
         values (
           ${JSON.stringify(picked)},
           ${total},
@@ -406,13 +418,19 @@ export const placeOrder = createServerFn({ method: "POST" })
           ${customer.phone},
           ${customer.email},
           ${""},
-          ${"guest"}
+          ${"guest"},
+          ${agent ? agent.code : ""},
+          ${agent ? agent.id : null},
+          ${discount}
         )
         returning id
       `;
       return {
         id: Number(inserted[0].id),
         total,
+        subtotal,
+        discount,
+        referralCode: agent ? agent.code : "",
         lines: picked,
       };
     } catch (error) {
@@ -564,5 +582,118 @@ export const saveShopSettings = createServerFn({ method: "POST" })
         hero_slides = ${JSON.stringify(data.heroSlides)}
       where id = 1
     `;
+    return { ok: true as const };
+  });
+
+async function findActiveAgent(code: string) {
+  const sql = await getSql();
+  const rows = await sql<{ id: number; code: string; discount_pct: number | null }>`
+    select id, code, discount_pct from referral_agents
+    where code = ${code} and active = true and discount_pct is not null
+  `;
+  const row = rows[0];
+  return row ? { id: Number(row.id), code: row.code, discountPct: Number(row.discount_pct) } : null;
+}
+
+/** Public: check a referral code at checkout (the server re-checks on order). */
+export const checkReferral = createServerFn({ method: "GET" })
+  .validator((raw: unknown) => readReferralCode(raw))
+  .handler(async ({ data: code }) => {
+    if (!code) return null;
+    const agent = await findActiveAgent(code);
+    return agent ? { code: agent.code, discountPct: agent.discountPct } : null;
+  });
+
+async function requireOwner(userId: string) {
+  if ((await ensureOwner(userId)) !== "owner") throw new Error("Only the shop owner can manage referral agents.");
+}
+
+export const listReferralAgents = createServerFn({ method: "GET" })
+  .middleware([authMiddleware])
+  .handler(async ({ context }): Promise<ReferralAgent[]> => {
+    await requireOwner(context.userId);
+    const sql = await getSql();
+    const rows = await sql<{
+      id: number;
+      name: string;
+      code: string;
+      discount_pct: number | null;
+      active: boolean;
+      times_used: number;
+      total_value: number;
+    }>`
+      select a.id, a.name, a.code, a.discount_pct, a.active,
+        count(o.id)::int as times_used, coalesce(sum(o.total), 0)::int as total_value
+      from referral_agents a
+      left join orders o on o.referral_agent_id = a.id
+      group by a.id
+      order by a.created_at desc
+    `;
+    return rows.map((row) => ({
+      id: Number(row.id),
+      name: row.name,
+      code: row.code,
+      discountPct: row.discount_pct === null ? null : Number(row.discount_pct),
+      active: Boolean(row.active),
+      timesUsed: Number(row.times_used),
+      totalValue: Number(row.total_value),
+    }));
+  });
+
+function codeStem(name: string): string {
+  const letters = name.toUpperCase().replace(/[^A-Z]/g, "");
+  return (letters + "XXX").slice(0, 3);
+}
+
+export const createReferralAgent = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((raw: unknown) => {
+    const name = z.string().trim().min(1, "Add the agent name.").max(80).parse(raw);
+    return name;
+  })
+  .handler(async ({ context, data: name }) => {
+    await requireOwner(context.userId);
+    const sql = await getSql();
+    const stem = codeStem(name);
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      const code = `${stem}${String(Math.floor(Math.random() * 1000)).padStart(3, "0")}`;
+      const rows = await sql<{ id: number }>`
+        insert into referral_agents (name, code) values (${name}, ${code})
+        on conflict (code) do nothing
+        returning id
+      `;
+      if (rows.length) return { id: Number(rows[0].id), code };
+    }
+    throw new Error("Could not make a free code for that name. Try again.");
+  });
+
+export const updateReferralAgent = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((raw: unknown) =>
+    z
+      .object({
+        id: z.number().int().positive(),
+        discountPct: z.number().int().min(0, "Discount 0–90%.").max(90, "Discount 0–90%.").nullable(),
+        active: z.boolean(),
+      })
+      .parse(raw),
+  )
+  .handler(async ({ context, data }) => {
+    await requireOwner(context.userId);
+    const sql = await getSql();
+    await sql`
+      update referral_agents set discount_pct = ${data.discountPct}, active = ${data.active}
+      where id = ${data.id}
+    `;
+    return { ok: true as const };
+  });
+
+export const deleteReferralAgent = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((raw: unknown) => z.number().int().positive().parse(raw))
+  .handler(async ({ context, data: id }) => {
+    await requireOwner(context.userId);
+    const sql = await getSql();
+    await sql`delete from referral_agents where id = ${id}`;
     return { ok: true as const };
   });

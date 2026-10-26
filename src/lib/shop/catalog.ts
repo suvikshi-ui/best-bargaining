@@ -94,7 +94,28 @@ export type ShopOrder = {
   customerEmail: string;
   accountEmail: string;
   userId: string;
+  referralCode?: string;
+  discountAmount?: number;
 };
+
+export type ReferralAgent = {
+  id: number;
+  name: string;
+  code: string;
+  discountPct: number | null;
+  active: boolean;
+  timesUsed: number;
+  totalValue: number;
+};
+
+export function readReferralCode(value: unknown): string {
+  return typeof value === "string" ? value.trim().toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 12) : "";
+}
+
+/** Discount in rupees for a subtotal at pct%, rounded down. */
+export function discountFor(subtotal: number, pct: number): number {
+  return Math.floor((subtotal * Math.max(0, Math.min(90, pct))) / 100);
+}
 
 export type SitePage = {
   slug: string;

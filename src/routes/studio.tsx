@@ -14,6 +14,10 @@ import {
   savePage,
   saveProduct,
   saveShopSettings,
+  listReferralAgents,
+  createReferralAgent,
+  updateReferralAgent,
+  deleteReferralAgent,
 } from "@/lib/shop/api";
 import {
   CATEGORIES,
@@ -590,6 +594,7 @@ function Desk() {
       )}
 
       <StorefrontSettings />
+      <ReferralAgents />
       <OrdersTable orders={studio.data.orders} />
     </div>
   );
@@ -843,6 +848,7 @@ function OrdersTable({ orders }: { orders: ShopOrder[] }) {
         order.customerName,
         order.customerEmail,
         order.customerPhone,
+        order.referralCode ?? "",
         `#${order.id}`,
         ...order.items.map((item) => item.name),
       ]
@@ -876,6 +882,7 @@ function OrdersTable({ orders }: { orders: ShopOrder[] }) {
                 <th className="px-3 py-2">Email</th>
                 <th className="px-3 py-2">WhatsApp</th>
                 <th className="px-3 py-2 text-right">Total</th>
+                <th className="px-3 py-2">Referral</th>
                 <th className="px-3 py-2">Items</th>
               </tr>
             </thead>
@@ -908,6 +915,18 @@ function OrdersTable({ orders }: { orders: ShopOrder[] }) {
                       )}
                     </td>
                     <td className="px-3 py-2 text-right tabular-nums">{inr(order.total)}</td>
+                    <td className="px-3 py-2 whitespace-nowrap">
+                      {order.referralCode ? (
+                        <>
+                          {order.referralCode}
+                          {order.discountAmount ? (
+                            <span className="block text-xs text-mist">−{inr(order.discountAmount)}</span>
+                          ) : null}
+                        </>
+                      ) : (
+                        "—"
+                      )}
+                    </td>
                     <td className="px-3 py-2 text-mist">
                       {order.items.map((item) => `${item.qty} × ${item.name}`).join(", ")}
                     </td>
@@ -1108,5 +1127,166 @@ function StorefrontSettings() {
         </p>
       ) : null}
     </section>
+  );
+}
+
+function ReferralAgents() {
+  const queryClient = useQueryClient();
+  const agents = useQuery({ queryKey: ["referral-agents"], queryFn: () => listReferralAgents() });
+  const [name, setName] = useState("");
+  const [message, setMessage] = useState("");
+  const refresh = () => queryClient.invalidateQueries({ queryKey: ["referral-agents"] });
+  const create = useMutation({
+    mutationFn: () => createReferralAgent({ data: name }),
+    onSuccess: async (result) => {
+      setName("");
+      setMessage(`Code ${result.code} created. Set a discount % to activate it.`);
+      await refresh();
+    },
+    onError: (err) => setMessage(err instanceof Error ? err.message : "Could not add the agent."),
+  });
+
+  return (
+    <section className="mt-10">
+      <h2 className="text-3xl font-semibold">Referral agents</h2>
+      <p className="mt-1 text-sm text-mist">
+        Each agent gets a code. Customers type it at checkout to get the agent&apos;s discount.
+      </p>
+      <form
+        className="mt-3 flex gap-2"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (name.trim()) create.mutate();
+        }}
+      >
+        <input
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+          placeholder="Agent name, e.g. Vikshita"
+          maxLength={80}
+          className="h-11 min-w-0 flex-1 rounded-2xl border border-ink/15 bg-paper px-3 text-sm"
+        />
+        <button type="submit" disabled={create.isPending} className="h-11 rounded-full bg-ink px-5 text-sm text-paper">
+          Add agent
+        </button>
+      </form>
+      {message ? (
+        <p className="mt-2 text-sm text-clay" role="status">
+          {message}
+        </p>
+      ) : null}
+      {agents.data && agents.data.length > 0 ? (
+        <div className="mt-3 overflow-x-auto rounded-2xl bg-card">
+          <table className="w-full min-w-[720px] text-left text-sm">
+            <thead className="text-xs uppercase tracking-wide text-mist">
+              <tr>
+                <th className="px-3 py-2">Name</th>
+                <th className="px-3 py-2">Code</th>
+                <th className="px-3 py-2">Discount %</th>
+                <th className="px-3 py-2 text-right">Used</th>
+                <th className="px-3 py-2 text-right">Order value</th>
+                <th className="px-3 py-2">Active</th>
+                <th className="px-3 py-2" />
+              </tr>
+            </thead>
+            <tbody>
+              {agents.data.map((agent) => (
+                <AgentRow key={agent.id} agent={agent} onChanged={refresh} onMessage={setMessage} />
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : agents.data ? (
+        <p className="mt-3 text-sm text-mist">No agents yet.</p>
+      ) : null}
+    </section>
+  );
+}
+
+function AgentRow({
+  agent,
+  onChanged,
+  onMessage,
+}: {
+  agent: { id: number; name: string; code: string; discountPct: number | null; active: boolean; timesUsed: number; totalValue: number };
+  onChanged: () => Promise<unknown>;
+  onMessage: (message: string) => void;
+}) {
+  const [pct, setPct] = useState(agent.discountPct === null ? "" : String(agent.discountPct));
+  const [busy, setBusy] = useState(false);
+
+  async function save(next: { discountPct?: number | null; active?: boolean }) {
+    setBusy(true);
+    try {
+      let discountPct: number | null;
+      if (next.discountPct !== undefined) discountPct = next.discountPct;
+      else if (pct.trim() === "") discountPct = null;
+      else {
+        discountPct = Number(pct);
+        if (!Number.isInteger(discountPct) || discountPct < 0 || discountPct > 90) {
+          onMessage("Discount must be a whole number from 0 to 90.");
+          return;
+        }
+      }
+      await updateReferralAgent({
+        data: { id: agent.id, discountPct, active: next.active ?? agent.active },
+      });
+      onMessage(`Saved ${agent.code}.`);
+      await onChanged();
+    } catch (err) {
+      onMessage(err instanceof Error ? err.message : "Could not save.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function remove() {
+    if (!window.confirm(`Delete agent ${agent.name} (${agent.code})? Past orders keep the code.`)) return;
+    setBusy(true);
+    try {
+      await deleteReferralAgent({ data: agent.id });
+      await onChanged();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <tr className="border-t border-ink/10">
+      <td className="px-3 py-2">{agent.name}</td>
+      <td className="px-3 py-2 font-mono">{agent.code}</td>
+      <td className="px-3 py-2">
+        <div className="flex items-center gap-2">
+          <input
+            inputMode="numeric"
+            value={pct}
+            onChange={(event) => setPct(event.target.value.replace(/[^0-9]/g, "").slice(0, 2))}
+            placeholder="—"
+            aria-label={`Discount % for ${agent.code}`}
+            className="h-9 w-16 rounded-xl border border-ink/15 bg-paper px-2 text-sm"
+          />
+          <button type="button" disabled={busy} onClick={() => void save({})} className="h-9 px-2 text-clay">
+            Save
+          </button>
+        </div>
+      </td>
+      <td className="px-3 py-2 text-right tabular-nums">{agent.timesUsed}</td>
+      <td className="px-3 py-2 text-right tabular-nums">{inr(agent.totalValue)}</td>
+      <td className="px-3 py-2">
+        <input
+          type="checkbox"
+          className="size-4 accent-clay"
+          checked={agent.active}
+          disabled={busy}
+          onChange={(event) => void save({ active: event.target.checked })}
+          aria-label={`Active ${agent.code}`}
+        />
+      </td>
+      <td className="px-3 py-2">
+        <button type="button" disabled={busy} onClick={() => void remove()} className="h-9 px-2 text-clay">
+          Delete
+        </button>
+      </td>
+    </tr>
   );
 }
