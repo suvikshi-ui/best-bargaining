@@ -13,7 +13,9 @@ import {
   categoryOf,
   inr,
   productWriteSchema,
+  whatsAppLink,
   type CategoryId,
+  type ShopOrder,
   type Product,
   type ProductWrite,
 } from "@/lib/shop/catalog";
@@ -542,32 +544,7 @@ function Desk() {
         </ul>
       )}
 
-      <h2 className="mt-10 font-display text-3xl">Orders</h2>
-      {studio.data.orders.length === 0 ? (
-        <p className="mt-2 text-sm text-mist">No orders yet. A checkout shows the pieces and the total here.</p>
-      ) : (
-        <ul className="mt-3 space-y-3">
-          {studio.data.orders.map((order) => (
-            <li key={order.id} className="rounded-2xl bg-card px-4 py-3">
-              <p className="font-medium">
-                Order #{order.id} · <span className="tabular-nums">{inr(order.total)}</span>
-              </p>
-              {order.customerName ? (
-                <div className="mt-2 text-sm">
-                  <p>{order.customerName}</p>
-                  <p className="tabular-nums">{order.customerPhone}</p>
-                  <p>{order.customerEmail}</p>
-                </div>
-              ) : (
-                <p className="mt-2 text-sm text-mist">No contact on this order.</p>
-              )}
-              <p className="mt-2 text-sm text-mist">
-                Ordered: {order.items.map((item) => `${item.qty} × ${item.name}`).join(", ")}
-              </p>
-            </li>
-          ))}
-        </ul>
-      )}
+      <OrdersTable orders={studio.data.orders} />
     </div>
   );
 
@@ -798,4 +775,107 @@ function Stat({ label, value }: { label: string; value: string }) {
       <dd className="font-display text-2xl tabular-nums">{value}</dd>
     </div>
   );
+}
+
+function OrdersTable({ orders }: { orders: ShopOrder[] }) {
+  const [query, setQuery] = useState("");
+  const needle = query.trim().toLowerCase();
+  const rows = [...orders]
+    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : b.id - a.id))
+    .filter((order) => {
+      if (!needle) return true;
+      const hay = [
+        order.customerName,
+        order.customerEmail,
+        order.customerPhone,
+        `#${order.id}`,
+        ...order.items.map((item) => item.name),
+      ]
+        .join(" ")
+        .toLowerCase();
+      return hay.includes(needle);
+    });
+  return (
+    <section className="mt-10">
+      <h2 className="font-display text-3xl">Customers &amp; orders</h2>
+      <p className="mt-1 text-sm text-mist">Every checkout, newest first.</p>
+      <input
+        type="search"
+        value={query}
+        onChange={(event) => setQuery(event.target.value)}
+        placeholder="Search name, email, WhatsApp, item…"
+        aria-label="Search orders"
+        className={inputClass}
+      />
+      {rows.length === 0 ? (
+        <p className="mt-3 text-sm text-mist">
+          {orders.length === 0 ? "No orders yet." : "No orders match that search."}
+        </p>
+      ) : (
+        <div className="mt-3 overflow-x-auto rounded-2xl bg-card">
+          <table className="w-full min-w-[720px] text-left text-sm">
+            <thead className="text-xs uppercase tracking-wide text-mist">
+              <tr>
+                <th className="px-3 py-2">Date</th>
+                <th className="px-3 py-2">Name</th>
+                <th className="px-3 py-2">Email</th>
+                <th className="px-3 py-2">WhatsApp</th>
+                <th className="px-3 py-2 text-right">Total</th>
+                <th className="px-3 py-2">Items</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((order) => {
+                const wa = whatsAppLink(order.customerPhone);
+                return (
+                  <tr key={order.id} className="border-t border-ink/10 align-top">
+                    <td className="px-3 py-2 whitespace-nowrap tabular-nums">
+                      {formatOrderDate(order.createdAt)}
+                      <span className="block text-xs text-mist">#{order.id}</span>
+                    </td>
+                    <td className="px-3 py-2">{order.customerName || "—"}</td>
+                    <td className="px-3 py-2 break-all">
+                      {order.customerEmail ? (
+                        <a className="underline" href={`mailto:${order.customerEmail}`}>
+                          {order.customerEmail}
+                        </a>
+                      ) : (
+                        "—"
+                      )}
+                    </td>
+                    <td className="px-3 py-2 whitespace-nowrap tabular-nums">
+                      {wa ? (
+                        <a className="underline" href={wa} target="_blank" rel="noreferrer">
+                          {order.customerPhone}
+                        </a>
+                      ) : (
+                        order.customerPhone || "—"
+                      )}
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums">{inr(order.total)}</td>
+                    <td className="px-3 py-2 text-mist">
+                      {order.items.map((item) => `${item.qty} × ${item.name}`).join(", ")}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function formatOrderDate(value: string): string {
+  const date = new Date(value.replace(" ", "T"));
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString("en-IN", {
+    timeZone: "Asia/Kolkata",
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
 }

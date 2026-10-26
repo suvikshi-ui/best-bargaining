@@ -220,7 +220,7 @@ function Bag() {
               className="mt-2 h-11 w-full rounded-2xl border border-ink/15 bg-paper px-3 text-sm outline-none focus:border-clay"
             />
             <label className="mt-3 block text-sm text-mist" htmlFor="customer-phone">
-              Mobile number
+              WhatsApp number (with country code)
             </label>
             <input
               id="customer-phone"
@@ -228,6 +228,7 @@ function Bag() {
               type="tel"
               inputMode="tel"
               autoComplete="tel"
+              placeholder="+91 98765 43210"
               value={phone}
               onChange={(event) => setPhone(event.target.value)}
               className="mt-2 h-11 w-full rounded-2xl border border-ink/15 bg-paper px-3 text-sm outline-none focus:border-clay"

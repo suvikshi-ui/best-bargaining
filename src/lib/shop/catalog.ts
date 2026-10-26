@@ -108,17 +108,34 @@ export type ShopCustomer = {
   orders: ShopOrder[];
 };
 
+/**
+ * Normalise a WhatsApp number to E.164 (+<country><number>). A bare 10-digit
+ * number (optionally with a leading 0) is treated as Indian (+91).
+ */
+export function normalizeWhatsApp(raw: string): string {
+  const trimmed = raw.trim();
+  let digits = trimmed.replace(/\D/g, "");
+  if (trimmed.startsWith("+")) return `+${digits}`;
+  if (digits.startsWith("00")) return `+${digits.slice(2)}`;
+  if (digits.length === 11 && digits.startsWith("0")) digits = digits.slice(1);
+  if (digits.length === 10) return `+91${digits}`;
+  return `+${digits}`;
+}
+
+/** wa.me link for a stored number, or "" if it has no digits. */
+export function whatsAppLink(phone: string): string {
+  const digits = normalizeWhatsApp(phone).replace(/\D/g, "");
+  return digits.length >= 8 ? `https://wa.me/${digits}` : "";
+}
+
 export const customerSchema = z.object({
   name: z.string().trim().min(1, "Add the customer name.").max(80, "Keep the name shorter."),
   phone: z
     .string()
     .trim()
-    .min(10, "Add a mobile number.")
-    .max(16, "That mobile number is too long.")
-    .refine((value) => {
-      const digits = value.replace(/\D/g, "");
-      return digits.length >= 10 && digits.length <= 13;
-    }, "Add a 10-digit mobile number."),
+    .min(1, "Add a WhatsApp number.")
+    .transform((value) => normalizeWhatsApp(value))
+    .refine((value) => /^\+[1-9]\d{7,14}$/.test(value), "Add a WhatsApp number with country code, e.g. +91 98765 43210."),
   email: z.string().trim().email("Add an email.").max(120, "That email is too long."),
 });
 
