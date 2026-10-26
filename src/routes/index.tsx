@@ -4,10 +4,12 @@ import { useMemo } from "react";
 import { ProductCard } from "@/components/shop/product-card";
 import { HeroCarousel } from "@/components/shop/hero-carousel";
 import { ShopShell } from "@/components/shop/shell";
-import { getPages, listProducts } from "@/lib/shop/api";
+import { getPages, getShopSettings, listProducts } from "@/lib/shop/api";
 import {
-  CATEGORIES,
   categoryOf,
+  categoryOnHome,
+  dealLine,
+  resolveHomeSections,
   offPercent,
   readCat,
   readQuery,
@@ -20,7 +22,10 @@ export const Route = createFileRoute("/")({
     cat: readCat(search.cat),
     q: readQuery(search.q),
   }),
-  loader: () => listProducts(),
+  loader: async () => {
+    const [products, settings] = await Promise.all([listProducts(), getShopSettings()]);
+    return { products, settings };
+  },
   component: Home,
 });
 
@@ -30,8 +35,19 @@ function Home() {
   const query = useQuery({
     queryKey: ["products"],
     queryFn: () => listProducts(),
-    initialData: initial,
+    initialData: initial.products,
   });
+  const settings = useQuery({
+    queryKey: ["shop-settings"],
+    queryFn: () => getShopSettings(),
+    initialData: initial.settings,
+    staleTime: 60_000,
+  });
+  const nav = settings.data?.navCategories ?? [];
+  // Section order and text from the studio; categories left out of the top menu are hidden everywhere below.
+  const sections = resolveHomeSections(settings.data?.homeSections ?? []).filter((section) =>
+    categoryOnHome(section.id, nav),
+  );
   const pages = useQuery({ queryKey: ["pages"], queryFn: () => getPages() });
   const pageOf = (slug: string) => pages.data?.find((page) => page.slug === slug);
   const products = query.data;
@@ -56,11 +72,15 @@ function Home() {
           <HeroCarousel>
             <div className="absolute inset-0 bg-gradient-to-r from-black/75 via-black/35 to-transparent" />
             <div className="absolute inset-0 flex flex-col justify-end p-5 pb-10 md:p-12">
-              <p className="text-xs font-semibold tracking-wide text-white uppercase">Best Bargain</p>
+              <p className="text-xs font-semibold tracking-wide text-white uppercase">
+                Best Bargain
+              </p>
               <h1 className="mt-2 max-w-xl text-3xl font-semibold leading-tight text-white md:text-5xl">
                 {pageOf("home")?.title || "Gadgets, kitchen, fashion, and the rest of the house."}
               </h1>
-              {pageOf("home")?.note ? <p className="mt-2 max-w-md text-sm text-white/80">{pageOf("home")?.note}</p> : null}
+              {pageOf("home")?.note ? (
+                <p className="mt-2 max-w-md text-sm text-white/80">{pageOf("home")?.note}</p>
+              ) : null}
               <a
                 href="#shelf"
                 className="mt-4 inline-flex h-11 w-fit items-center bg-clay px-5 text-sm font-semibold text-white"
@@ -71,13 +91,15 @@ function Home() {
           </HeroCarousel>
 
           <div className="mt-4 flex gap-4 overflow-x-auto pb-2">
-            {CATEGORIES.map((category) => {
+            {sections.map((section) => {
+              const category = categoryOf(section.id);
               const items = products.filter((product) => product.category === category.id);
               const cover = items[0];
               const off = maxOff(items);
               return (
                 <Link
                   key={category.id}
+                  data-testid={`home-tile-${category.id}`}
                   to="/"
                   search={{ cat: category.id, q: "" }}
                   className="w-24 shrink-0 text-center"
@@ -92,7 +114,9 @@ function Home() {
                     <span className="mt-0.5 block text-[11px] text-mist">{category.hindi}</span>
                   ) : null}
                   {off > 0 && (
-                    <span className="mt-1 block text-xs font-semibold text-clay">UPTO {off}% OFF</span>
+                    <span className="mt-1 block text-xs font-semibold text-clay">
+                      {dealLine(section.dealText, off)}
+                    </span>
                   )}
                 </Link>
               );
@@ -100,15 +124,21 @@ function Home() {
           </div>
 
           <div id="shelf" className="scroll-mt-28">
-            {CATEGORIES.map((category) => (
-              <Shelf
-                key={category.id}
-                id={category.id}
-                title={pageOf(category.id)?.title || category.label}
-                note={pageOf(category.id)?.note || category.note}
-                items={products.filter((product) => product.category === category.id)}
-              />
-            ))}
+            {sections
+              .filter((section) => section.show)
+              .map((section) => {
+                const category = categoryOf(section.id);
+                return (
+                  <Shelf
+                    key={section.id}
+                    id={section.id}
+                    title={section.title || pageOf(section.id)?.title || category.label}
+                    note={section.note || pageOf(section.id)?.note || category.note}
+                    dealText={section.dealText}
+                    items={products.filter((product) => product.category === section.id)}
+                  />
+                );
+              })}
           </div>
         </>
       ) : (
@@ -136,31 +166,38 @@ function Home() {
 }
 
 function maxOff(items: Product[]) {
-  return items.reduce((best, product) => Math.max(best, offPercent(product.price, product.compareAt)), 0);
+  return items.reduce(
+    (best, product) => Math.max(best, offPercent(product.price, product.compareAt)),
+    0,
+  );
 }
 
 function Shelf({
   id,
   title,
   note,
+  dealText,
   items,
 }: {
   id: ShopCat;
   title: string;
   note: string;
+  dealText: string;
   items: Product[];
 }) {
   if (!items.length) return null;
   const off = maxOff(items);
   return (
-    <section className="mt-10">
+    <section className="mt-10" data-testid={`home-section-${id}`}>
       <div className="flex items-end justify-between gap-3 border-b border-ink/10 pb-2">
         <div>
           <h2 className="text-xl font-semibold">{title}</h2>
           <p className="text-sm text-mist">{note}</p>
         </div>
         <div className="flex items-center gap-3">
-          {off > 0 && <span className="text-xs font-semibold text-clay">UPTO {off}% OFF</span>}
+          {off > 0 && (
+            <span className="text-xs font-semibold text-clay">{dealLine(dealText, off)}</span>
+          )}
           <Link to="/" search={{ cat: id, q: "" }} className="text-sm font-medium">
             View all
           </Link>

@@ -216,7 +216,64 @@ export const shopSettingsSchema = z.object({
   heroSlides: z.array(photoSchema).max(4, "Up to 4 slider photos."),
 });
 
-export type ShopSettings = z.infer<typeof shopSettingsSchema>;
+export type ShopSettings = z.infer<typeof shopSettingsSchema> & { homeSections: HomeSection[] };
+
+/** One category section lower on the homepage. Empty text means "use the default". */
+export type HomeSection = { id: CategoryId; show: boolean; title: string; note: string; dealText: string };
+
+export const DEFAULT_DEAL_TEXT = "UPTO {off}% OFF";
+
+export const homeSectionsSchema = z
+  .array(
+    z.object({
+      id: z.string(),
+      show: z.boolean(),
+      title: z.string().trim().max(80, "Keep section titles under 80 characters."),
+      note: z.string().trim().max(160, "Keep section subtitles under 160 characters."),
+      dealText: z.string().trim().max(60, "Keep the deal line under 60 characters."),
+    }),
+  )
+  .max(40)
+  .transform((rows) => resolveHomeSections(rows));
+
+/** Saved order first (known categories only, no duplicates), then any category not saved yet with defaults. */
+export function resolveHomeSections(saved: unknown): HomeSection[] {
+  const raw = typeof saved === "string" ? safeParse(saved) : saved;
+  const list = Array.isArray(raw) ? raw : [];
+  const out: HomeSection[] = [];
+  const seen = new Set<string>();
+  for (const item of list) {
+    if (!item || typeof item !== "object") continue;
+    const row = item as Record<string, unknown>;
+    const id = String(row.id ?? "");
+    if (seen.has(id) || !CATEGORIES.some((c) => c.id === id)) continue;
+    seen.add(id);
+    const text = (v: unknown, max: number) => (typeof v === "string" ? v.trim().slice(0, max) : "");
+    out.push({
+      id: id as CategoryId,
+      show: row.show !== false,
+      title: text(row.title, 80),
+      note: text(row.note, 160),
+      dealText: text(row.dealText, 60),
+    });
+  }
+  for (const c of CATEGORIES) if (!seen.has(c.id)) out.push({ id: c.id, show: true, title: "", note: "", dealText: "" });
+  return out;
+}
+
+/** "UPTO {off}% OFF" with the real figure; "" when there is no discount. */
+export function dealLine(template: string, off: number): string {
+  if (off <= 0) return "";
+  return (template.trim() || DEFAULT_DEAL_TEXT).replace(/\{off\}/g, String(off));
+}
+
+/**
+ * Categories the owner left out of the top menu are hidden everywhere on the homepage.
+ * An empty menu (never set up: Home only) hides nothing, so the default homepage is unchanged.
+ */
+export function categoryOnHome(id: string, navCategories: string[]): boolean {
+  return navCategories.length === 0 || navCategories.includes(id);
+}
 
 export function parseJsonList(value: unknown): string[] {
   const raw = typeof value === "string" ? safeParse(value) : value;

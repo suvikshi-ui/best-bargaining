@@ -20,6 +20,7 @@ import {
   createReferralAgent,
   updateReferralAgent,
   deleteReferralAgent,
+  saveHomeSections,
 } from "@/lib/shop/api";
 import {
   CATEGORIES,
@@ -32,6 +33,8 @@ import {
   type ShopOrder,
   type Product,
   type ProductWrite,
+  DEFAULT_DEAL_TEXT,
+  type HomeSection,
 } from "@/lib/shop/catalog";
 
 export const Route = createFileRoute("/studio")({
@@ -581,6 +584,7 @@ function Desk() {
       )}
 
       <StorefrontSettings />
+      <HomeSectionsSettings />
       <ReferralAgents />
       <DiscountsSection />
       <LoyalGuests />
@@ -1092,6 +1096,132 @@ function PhotoListEditor({
         </div>
       )}
     </div>
+  );
+}
+
+function HomeSectionsSettings() {
+  const queryClient = useQueryClient();
+  const settings = useQuery({ queryKey: ["shop-settings"], queryFn: () => getShopSettings() });
+  const [rows, setRows] = useState<HomeSection[] | null>(null);
+  const [message, setMessage] = useState("");
+  const value = rows ?? settings.data?.homeSections ?? [];
+  const nav = settings.data?.navCategories ?? [];
+  const save = useMutation({
+    mutationFn: () => saveHomeSections({ data: value }),
+    onSuccess: async () => {
+      setMessage("Saved. The homepage shows the new sections.");
+      setRows(null);
+      await queryClient.invalidateQueries({ queryKey: ["shop-settings"] });
+    },
+    onError: (err) => setMessage(err instanceof Error ? err.message : "Could not save."),
+  });
+  const patch = (i: number, change: Partial<HomeSection>) =>
+    setRows(value.map((row, j) => (j === i ? { ...row, ...change } : row)));
+  const move = (i: number, by: number) => {
+    const j = i + by;
+    if (j < 0 || j >= value.length) return;
+    const next = [...value];
+    [next[i], next[j]] = [next[j]!, next[i]!];
+    setRows(next);
+  };
+  return (
+    <section className="mt-10" data-testid="home-sections-settings">
+      <h2 className="text-3xl font-semibold">Homepage sections</h2>
+      <p className="mt-1 text-sm text-mist">
+        The category sections below the slider, top to bottom. Leave a box empty to keep the default
+        text. In the deal line,
+        {" {off} "}becomes the biggest discount in that category. A category left out of the top
+        menu is hidden from the whole homepage.
+      </p>
+      <ul className="mt-3 space-y-3">
+        {value.map((row, i) => {
+          const category = CATEGORIES.find((item) => item.id === row.id)!;
+          const inMenu = nav.length === 0 || nav.includes(row.id);
+          return (
+            <li
+              key={row.id}
+              className="rounded-2xl bg-card px-4 py-3"
+              data-testid={`home-section-row-${row.id}`}
+            >
+              <div className="flex flex-wrap items-center gap-3">
+                <label className="flex items-center gap-2 text-sm font-medium">
+                  <input
+                    type="checkbox"
+                    checked={row.show}
+                    onChange={(event) => patch(i, { show: event.target.checked })}
+                  />
+                  Show {category.label} section
+                </label>
+                {!inMenu ? (
+                  <span className="text-xs text-clay">Hidden: not in the top menu</span>
+                ) : null}
+                <span className="ml-auto flex gap-1">
+                  <button
+                    type="button"
+                    aria-label={`Move ${category.label} up`}
+                    disabled={i === 0}
+                    onClick={() => move(i, -1)}
+                    className="h-8 w-8 rounded-full border border-ink/15 disabled:opacity-30"
+                  >
+                    ↑
+                  </button>
+                  <button
+                    type="button"
+                    aria-label={`Move ${category.label} down`}
+                    disabled={i === value.length - 1}
+                    onClick={() => move(i, 1)}
+                    className="h-8 w-8 rounded-full border border-ink/15 disabled:opacity-30"
+                  >
+                    ↓
+                  </button>
+                </span>
+              </div>
+              <div className="mt-2 grid gap-2 sm:grid-cols-3">
+                <input
+                  aria-label={`${category.label} section title`}
+                  value={row.title}
+                  placeholder={category.label}
+                  maxLength={80}
+                  onChange={(event) => patch(i, { title: event.target.value })}
+                  className={inputClass}
+                />
+                <input
+                  aria-label={`${category.label} section subtitle`}
+                  value={row.note}
+                  placeholder={category.note}
+                  maxLength={160}
+                  onChange={(event) => patch(i, { note: event.target.value })}
+                  className={inputClass}
+                />
+                <input
+                  aria-label={`${category.label} deal line`}
+                  value={row.dealText}
+                  placeholder={DEFAULT_DEAL_TEXT}
+                  maxLength={60}
+                  onChange={(event) => patch(i, { dealText: event.target.value })}
+                  className={inputClass}
+                />
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+      <div className="mt-3 flex items-center gap-3">
+        <button
+          type="button"
+          disabled={save.isPending || !rows}
+          onClick={() => save.mutate()}
+          className="h-11 rounded-full bg-ink px-5 text-sm text-paper disabled:opacity-40"
+        >
+          {save.isPending ? "Saving…" : "Save homepage sections"}
+        </button>
+        {message ? (
+          <p className="text-sm text-mist" role="status">
+            {message}
+          </p>
+        ) : null}
+      </div>
+    </section>
   );
 }
 

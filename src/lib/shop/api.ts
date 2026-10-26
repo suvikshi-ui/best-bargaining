@@ -18,6 +18,8 @@ import {
   parseAgentCode,
   type ShopSettings,
   parseJsonList,
+  resolveHomeSections,
+  homeSectionsSchema,
   shopSettingsSchema,
   normalizeWhatsApp,
   CATEGORIES as ALL_CATEGORIES,
@@ -576,18 +578,33 @@ export const saveBag = createServerFn({ method: "POST" })
 
 export const getShopSettings = createServerFn({ method: "GET" }).handler(async (): Promise<ShopSettings> => {
   const sql = await getSql();
-  const rows = await sql<{ nav_categories: string | null; hero_slides: string | null }>`
-    select nav_categories, hero_slides from shop where id = 1
+  const rows = await sql<{ nav_categories: string | null; hero_slides: string | null; home_sections: string | null }>`
+    select nav_categories, hero_slides, home_sections from shop where id = 1
   `;
   return {
     navCategories: parseJsonList(rows[0]?.nav_categories),
     heroSlides: parseJsonList(rows[0]?.hero_slides).slice(0, 4),
+    homeSections: resolveHomeSections(rows[0]?.home_sections ?? "[]"),
   };
 });
 
+export const saveHomeSections = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((raw: unknown) => {
+    const parsed = homeSectionsSchema.safeParse(raw);
+    if (!parsed.success) throw new Error(parsed.error.issues[0]?.message ?? "Check the homepage sections.");
+    return parsed.data;
+  })
+  .handler(async ({ context, data }) => {
+    if ((await ensureOwner(context.userId)) !== "owner") throw new Error("Only the shop owner can change settings.");
+    const sql = await getSql();
+    await sql`update shop set home_sections = ${JSON.stringify(data)} where id = 1`;
+    return { ok: true as const };
+  });
+
 export const saveShopSettings = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator((raw: unknown): ShopSettings => {
+  .validator((raw: unknown) => {
     const parsed = shopSettingsSchema.safeParse(raw);
     if (!parsed.success) throw new Error(parsed.error.issues[0]?.message ?? "Check the settings.");
     return parsed.data;
