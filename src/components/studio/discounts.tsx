@@ -195,7 +195,7 @@ function DiscountForm({
     try {
       await saveDiscount({ data: toPayload(form) });
       if (!form.id) setForm(blank(form.type));
-      await onDone(form.id ? "Saved." : "Added. Turn on Active when it is filled in.");
+      await onDone(form.id ? "Saved." : form.active ? "Added." : "Added. Turn on Active when it is filled in.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not save.");
     } finally {
@@ -434,8 +434,9 @@ export function DiscountsSection() {
           checked={Boolean(data.data?.stackReferral)}
           disabled={!data.data}
           onChange={async (event) => {
-            await saveStackSetting({ data: event.target.checked });
-            await refresh(event.target.checked ? "Referral codes now stack with one automatic discount." : "Single best discount only.");
+            const on = event.target.checked;
+            await saveStackSetting({ data: on });
+            await refresh(on ? "Referral codes now stack with one automatic discount." : "Single best discount only.");
           }}
         />
         Allow referral code to stack with one automatic discount

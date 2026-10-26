@@ -657,7 +657,7 @@ function isUniqueViolation(err: unknown): boolean {
   return Boolean(err && typeof err === "object" && (err as { code?: string }).code === "23505");
 }
 
-const CODE_TAKEN = "That code is already used by another agent.";
+const CODE_TAKEN = "That code is already in use (agent, coupon or guest code).";
 
 export const createReferralAgent = createServerFn({ method: "POST" })
   .middleware([authMiddleware])

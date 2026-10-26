@@ -948,7 +948,8 @@ function OrdersTable({ orders }: { orders: ShopOrder[] }) {
 }
 
 function formatOrderDate(value: string): string {
-  const date = new Date(value.replace(" ", "T"));
+  // Postgres ::text gives "2026-10-27 01:17:44.58+05" (or "+00"); JS needs "+05:00".
+  const date = new Date(value.replace(" ", "T").replace(/([+-]\d{2})$/, "$1:00"));
   if (Number.isNaN(date.getTime())) return value;
   return date.toLocaleString("en-IN", {
     timeZone: "Asia/Kolkata",
