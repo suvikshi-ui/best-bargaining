@@ -16,6 +16,7 @@ import {
   type ReferralAgent,
   discountFor,
   readReferralCode,
+  parseAgentCode,
   type ShopSettings,
   parseJsonList,
   shopSettingsSchema,
@@ -589,7 +590,7 @@ async function findActiveAgent(code: string) {
   const sql = await getSql();
   const rows = await sql<{ id: number; code: string; discount_pct: number | null }>`
     select id, code, discount_pct from referral_agents
-    where code = ${code} and active = true and discount_pct is not null
+    where code is not null and upper(code) = upper(${code}) and active = true and discount_pct is not null
   `;
   const row = rows[0];
   return row ? { id: Number(row.id), code: row.code, discountPct: Number(row.discount_pct) } : null;
@@ -616,7 +617,7 @@ export const listReferralAgents = createServerFn({ method: "GET" })
     const rows = await sql<{
       id: number;
       name: string;
-      code: string;
+      code: string | null;
       discount_pct: number | null;
       active: boolean;
       times_used: number;
@@ -632,7 +633,7 @@ export const listReferralAgents = createServerFn({ method: "GET" })
     return rows.map((row) => ({
       id: Number(row.id),
       name: row.name,
-      code: row.code,
+      code: row.code ?? "",
       discountPct: row.discount_pct === null ? null : Number(row.discount_pct),
       active: Boolean(row.active),
       timesUsed: Number(row.times_used),
@@ -640,31 +641,38 @@ export const listReferralAgents = createServerFn({ method: "GET" })
     }));
   });
 
-function codeStem(name: string): string {
-  const letters = name.toUpperCase().replace(/[^A-Z]/g, "");
-  return (letters + "XXX").slice(0, 3);
+const pctSchema = z.number().int().min(0, "Discount 0–90%.").max(90, "Discount 0–90%.").nullable();
+
+function isUniqueViolation(err: unknown): boolean {
+  return Boolean(err && typeof err === "object" && (err as { code?: string }).code === "23505");
 }
+
+const CODE_TAKEN = "That code is already used by another agent.";
 
 export const createReferralAgent = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator((raw: unknown) => {
-    const name = z.string().trim().min(1, "Add the agent name.").max(80).parse(raw);
-    return name;
+    const body = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+    return {
+      name: z.string().trim().min(1, "Add the agent name.").max(80).parse(body.name),
+      code: parseAgentCode(body.code),
+      discountPct: pctSchema.parse(body.discountPct ?? null),
+    };
   })
-  .handler(async ({ context, data: name }) => {
+  .handler(async ({ context, data }) => {
     await requireOwner(context.userId);
     const sql = await getSql();
-    const stem = codeStem(name);
-    for (let attempt = 0; attempt < 40; attempt += 1) {
-      const code = `${stem}${String(Math.floor(Math.random() * 1000)).padStart(3, "0")}`;
+    try {
       const rows = await sql<{ id: number }>`
-        insert into referral_agents (name, code) values (${name}, ${code})
-        on conflict (code) do nothing
+        insert into referral_agents (name, code, discount_pct)
+        values (${data.name}, ${data.code || null}, ${data.discountPct})
         returning id
       `;
-      if (rows.length) return { id: Number(rows[0].id), code };
+      return { id: Number(rows[0].id), code: data.code };
+    } catch (err) {
+      if (isUniqueViolation(err)) throw new Error(CODE_TAKEN);
+      throw err;
     }
-    throw new Error("Could not make a free code for that name. Try again.");
   });
 
 export const updateReferralAgent = createServerFn({ method: "POST" })
@@ -673,7 +681,8 @@ export const updateReferralAgent = createServerFn({ method: "POST" })
     z
       .object({
         id: z.number().int().positive(),
-        discountPct: z.number().int().min(0, "Discount 0–90%.").max(90, "Discount 0–90%.").nullable(),
+        code: z.unknown().transform((value) => parseAgentCode(value)),
+        discountPct: pctSchema,
         active: z.boolean(),
       })
       .parse(raw),
@@ -681,10 +690,16 @@ export const updateReferralAgent = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     await requireOwner(context.userId);
     const sql = await getSql();
-    await sql`
-      update referral_agents set discount_pct = ${data.discountPct}, active = ${data.active}
-      where id = ${data.id}
-    `;
+    try {
+      await sql`
+        update referral_agents
+        set code = ${data.code || null}, discount_pct = ${data.discountPct}, active = ${data.active}
+        where id = ${data.id}
+      `;
+    } catch (err) {
+      if (isUniqueViolation(err)) throw new Error(CODE_TAKEN);
+      throw err;
+    }
     return { ok: true as const };
   });
 

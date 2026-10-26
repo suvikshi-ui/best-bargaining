@@ -1136,13 +1136,25 @@ function ReferralAgents() {
   const queryClient = useQueryClient();
   const agents = useQuery({ queryKey: ["referral-agents"], queryFn: () => listReferralAgents() });
   const [name, setName] = useState("");
+  const [code, setCode] = useState("");
+  const [pct, setPct] = useState("");
   const [message, setMessage] = useState("");
   const refresh = () => queryClient.invalidateQueries({ queryKey: ["referral-agents"] });
   const create = useMutation({
-    mutationFn: () => createReferralAgent({ data: name }),
+    mutationFn: () =>
+      createReferralAgent({
+        data: { name, code, discountPct: pct.trim() === "" ? null : Number(pct) },
+      }),
     onSuccess: async (result) => {
+      const ready = Boolean(result.code) && pct.trim() !== "";
       setName("");
-      setMessage(`Code ${result.code} created. Set a discount % to activate it.`);
+      setCode("");
+      setPct("");
+      setMessage(
+        ready
+          ? `Agent added with code ${result.code}.`
+          : "Agent added. It stays inactive until both a code and a discount % are set.",
+      );
       await refresh();
     },
     onError: (err) => setMessage(err instanceof Error ? err.message : "Could not add the agent."),
@@ -1152,10 +1164,11 @@ function ReferralAgents() {
     <section className="mt-10">
       <h2 className="text-3xl font-semibold">Referral agents</h2>
       <p className="mt-1 text-sm text-mist">
-        Each agent gets a code. Customers type it at checkout to get the agent&apos;s discount.
+        Type any code for each agent (letters, digits, hyphens). Customers enter it at checkout to
+        get the agent&apos;s discount. A code works only once both a code and a % are set.
       </p>
       <form
-        className="mt-3 flex gap-2"
+        className="mt-3 flex flex-wrap gap-2"
         onSubmit={(event) => {
           event.preventDefault();
           if (name.trim()) create.mutate();
@@ -1166,7 +1179,25 @@ function ReferralAgents() {
           onChange={(event) => setName(event.target.value)}
           placeholder="Agent name, e.g. Vikshita"
           maxLength={80}
+          aria-label="Agent name"
           className="h-11 min-w-0 flex-1 rounded-2xl border border-ink/15 bg-paper px-3 text-sm"
+        />
+        <input
+          value={code}
+          onChange={(event) => setCode(event.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, "").slice(0, 20))}
+          placeholder="Code"
+          aria-label="Code"
+          autoCapitalize="characters"
+          autoComplete="off"
+          className="h-11 w-40 rounded-2xl border border-ink/15 bg-paper px-3 font-mono text-sm uppercase"
+        />
+        <input
+          inputMode="numeric"
+          value={pct}
+          onChange={(event) => setPct(event.target.value.replace(/[^0-9]/g, "").slice(0, 2))}
+          placeholder="Discount %"
+          aria-label="Discount %"
+          className="h-11 w-28 rounded-2xl border border-ink/15 bg-paper px-3 text-sm"
         />
         <button type="submit" disabled={create.isPending} className="h-11 rounded-full bg-ink px-5 text-sm text-paper">
           Add agent
@@ -1215,7 +1246,9 @@ function AgentRow({
   onMessage: (message: string) => void;
 }) {
   const [pct, setPct] = useState(agent.discountPct === null ? "" : String(agent.discountPct));
+  const [code, setCode] = useState(agent.code);
   const [busy, setBusy] = useState(false);
+  const label = agent.code || agent.name;
 
   async function save(next: { discountPct?: number | null; active?: boolean }) {
     setBusy(true);
@@ -1231,9 +1264,11 @@ function AgentRow({
         }
       }
       await updateReferralAgent({
-        data: { id: agent.id, discountPct, active: next.active ?? agent.active },
+        data: { id: agent.id, code, discountPct, active: next.active ?? agent.active },
       });
-      onMessage(`Saved ${agent.code}.`);
+      onMessage(
+        code && discountPct !== null ? `Saved ${code}.` : `Saved ${agent.name}. Inactive until a code and % are set.`,
+      );
       await onChanged();
     } catch (err) {
       onMessage(err instanceof Error ? err.message : "Could not save.");
@@ -1243,7 +1278,7 @@ function AgentRow({
   }
 
   async function remove() {
-    if (!window.confirm(`Delete agent ${agent.name} (${agent.code})? Past orders keep the code.`)) return;
+    if (!window.confirm(`Delete agent ${agent.name}${agent.code ? ` (${agent.code})` : ""}? Past orders keep the code.`)) return;
     setBusy(true);
     try {
       await deleteReferralAgent({ data: agent.id });
@@ -1256,7 +1291,17 @@ function AgentRow({
   return (
     <tr className="border-t border-ink/10">
       <td className="px-3 py-2">{agent.name}</td>
-      <td className="px-3 py-2 font-mono">{agent.code}</td>
+      <td className="px-3 py-2">
+        <input
+          value={code}
+          onChange={(event) => setCode(event.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, "").slice(0, 20))}
+          placeholder="Add a code"
+          aria-label={`Code for ${agent.name}`}
+          autoCapitalize="characters"
+          autoComplete="off"
+          className="h-9 w-36 rounded-xl border border-ink/15 bg-paper px-2 font-mono text-sm uppercase"
+        />
+      </td>
       <td className="px-3 py-2">
         <div className="flex items-center gap-2">
           <input
@@ -1264,7 +1309,7 @@ function AgentRow({
             value={pct}
             onChange={(event) => setPct(event.target.value.replace(/[^0-9]/g, "").slice(0, 2))}
             placeholder="—"
-            aria-label={`Discount % for ${agent.code}`}
+            aria-label={`Discount % for ${label}`}
             className="h-9 w-16 rounded-xl border border-ink/15 bg-paper px-2 text-sm"
           />
           <button type="button" disabled={busy} onClick={() => void save({})} className="h-9 px-2 text-clay">
@@ -1281,7 +1326,7 @@ function AgentRow({
           checked={agent.active}
           disabled={busy}
           onChange={(event) => void save({ active: event.target.checked })}
-          aria-label={`Active ${agent.code}`}
+          aria-label={`Active ${label}`}
         />
       </td>
       <td className="px-3 py-2">

@@ -108,8 +108,23 @@ export type ReferralAgent = {
   totalValue: number;
 };
 
+/** Max length of an agent code (letters, digits, hyphens). */
+export const REFERRAL_CODE_MAX = 20;
+
+/** Normalise a typed code: trim, uppercase, drop spaces/other characters. */
 export function readReferralCode(value: unknown): string {
-  return typeof value === "string" ? value.trim().toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 12) : "";
+  return typeof value === "string"
+    ? value.trim().toUpperCase().replace(/[^A-Z0-9-]/g, "").slice(0, REFERRAL_CODE_MAX)
+    : "";
+}
+
+/** Owner-entered code: "" (blank) or 1–20 of A–Z, 0–9, "-". Throws a readable error. */
+export function parseAgentCode(value: unknown): string {
+  const raw = typeof value === "string" ? value.trim().toUpperCase() : "";
+  if (!raw) return "";
+  if (raw.length > REFERRAL_CODE_MAX) throw new Error(`Code must be at most ${REFERRAL_CODE_MAX} characters.`);
+  if (!/^[A-Z0-9-]+$/.test(raw)) throw new Error("Code can use only letters, digits and hyphens.");
+  return raw;
 }
 
 /** Discount in rupees for a subtotal at pct%, rounded down. */
