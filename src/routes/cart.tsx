@@ -293,7 +293,7 @@ function Bag() {
               className="mt-2 h-11 w-full rounded-2xl border border-ink/15 bg-paper px-3 text-sm outline-none focus:border-clay"
             />
             <label className="mt-3 block text-sm text-mist" htmlFor="referral-code">
-              Referral code (optional)
+              Discount code (optional)
             </label>
             <input
               id="referral-code"
@@ -302,7 +302,7 @@ function Bag() {
               autoCapitalize="characters"
               value={referral}
               onChange={(event) => setReferral(event.target.value)}
-              placeholder="e.g. VIK123"
+              placeholder="Enter code"
               className="mt-2 h-11 w-full rounded-2xl border border-ink/15 bg-paper px-3 text-sm uppercase outline-none focus:border-clay"
             />
             {codeStatus === "invalid" ? (
