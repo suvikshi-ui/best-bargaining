@@ -44,7 +44,7 @@ export function ShopShell({ children }: { children: ReactNode }) {
       <header className="sticky top-0 z-30 border-b border-ink/10 bg-paper">
         <div className="mx-auto flex h-16 max-w-7xl items-center gap-3 px-4 md:px-8">
           <Link to="/" search={{ cat: "all", q: "" }} className="shrink-0 text-xl font-semibold tracking-tight">
-            Rainside
+            Best Bargain
           </Link>
           <form onSubmit={search} className="relative min-w-0 flex-1">
             <label className="sr-only" htmlFor="shop-search">
@@ -124,7 +124,7 @@ export function ShopShell({ children }: { children: ReactNode }) {
             </div>
           </div>
           <div>
-            <p className="text-xs font-semibold tracking-wide uppercase">Rainside</p>
+            <p className="text-xs font-semibold tracking-wide uppercase">Best Bargain</p>
             <p className="mt-3 max-w-xs text-sm text-mist">
               The same shelves as a full home shop: gadgets, kitchen, fashion, kids, and more. Prices in rupees.
             </p>

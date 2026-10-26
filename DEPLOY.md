@@ -1,4 +1,4 @@
-# Rainside Shop
+# Best Bargain
 
 Deploy marker — pushed to verify Vercel auto-deploy linkage.
 

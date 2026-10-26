@@ -61,7 +61,7 @@ function Home() {
             />
             <div className="absolute inset-0 bg-gradient-to-r from-black/75 via-black/35 to-transparent" />
             <div className="absolute inset-0 flex flex-col justify-end p-5 md:p-12">
-              <p className="text-xs font-semibold tracking-wide text-white uppercase">Rainside</p>
+              <p className="text-xs font-semibold tracking-wide text-white uppercase">Best Bargain</p>
               <h1 className="mt-2 max-w-xl text-3xl font-semibold leading-tight text-white md:text-5xl">
                 {pageOf("home")?.title || "Gadgets, kitchen, fashion, and the rest of the house."}
               </h1>

@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Rainside Owner",
+  "name": "Best Bargain Owner",
   "version": "1.0.0",
-  "description": "Opens the Rainside owner desk. Not shown on the shop.",
+  "description": "Opens the Best Bargain owner desk. Not shown on the shop.",
   "action": {
     "default_title": "Owner login",
     "default_popup": "popup.html",

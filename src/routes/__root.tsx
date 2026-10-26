@@ -5,7 +5,7 @@ import { PreviewHostBridge } from "@/components/preview-host-bridge";
 import { AuthProvider } from "@/lib/auth/provider";
 import appCss from "../styles.css?url";
 
-const APP_NAME = "Rainside";
+const APP_NAME = "Best Bargain";
 
 export const Route = createRootRoute({
   head: () => ({
@@ -15,7 +15,7 @@ export const Route = createRootRoute({
       { title: APP_NAME },
       {
         name: "description",
-        content: "Rainside sells gadgets, kitchen essentials, fashion, kids, lights, and the rest of a home shop.",
+        content: "Best Bargain sells gadgets, kitchen essentials, fashion, kids, lights, and the rest of a home shop.",
       },
       { name: "theme-color", content: "#ffffff" },
     ],
