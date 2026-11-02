@@ -100,11 +100,11 @@ const emptyDraft = (): Draft => ({
 
 type DeskTab = "slider" | "details" | "book" | "orders" | "add";
 const DESK_TABS: { id: DeskTab; label: string }[] = [
-  { id: "slider", label: "होम पेज स्लाइडर" },
-  { id: "details", label: "कस्टमर का डिटेल" },
-  { id: "book", label: "कस्टमर का बुक" },
-  { id: "orders", label: "ऑर्डर" },
-  { id: "add", label: "ऐड पीस" },
+  { id: "slider", label: "Home Page Slider" },
+  { id: "details", label: "Customer Details" },
+  { id: "book", label: "Customer Book" },
+  { id: "orders", label: "Orders" },
+  { id: "add", label: "Add Piece" },
 ];
 
 function Studio() {
@@ -116,7 +116,7 @@ function Studio() {
           <p className="text-sm text-clay">Owner desk</p>
           <h1 className="mt-1 font-display text-5xl leading-none">What you sell</h1>
           <p className="mt-3 max-w-xl text-sm text-mist">
-            Gadgets, kitchen, fashion, and every other shelf. Set the price and कितने items are on the shelf.
+            Gadgets, kitchen, fashion, and every other shelf. Set the price and how many items are on the shelf.
           </p>
         </div>
         <div className="min-h-10">{user ? <UserButton /> : null}</div>

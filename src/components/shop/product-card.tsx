@@ -89,7 +89,7 @@ export function ProductCard({ product }: { product: Product }) {
 
 /** Real counts only — thresholds, never invented urgency. */
 export function StockLine({ stock }: { stock: number }) {
-  if (stock <= 0) return <p className="text-xs font-medium text-clay">स्टॉक सेल हो गया</p>;
+  if (stock <= 0) return <p className="text-xs font-medium text-clay">Stock sold out</p>;
   if (stock <= 2)
     return (
       <p className="w-fit rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-800">

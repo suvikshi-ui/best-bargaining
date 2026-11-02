@@ -369,12 +369,12 @@ function NotifyMe({ productId }: { productId: number }) {
         .then(() => setState("done"))
         .catch((err: unknown) => { setState("idle"); setError(err instanceof Error ? err.message : "Try again."); });
     }}>
-      <label htmlFor="notify-email" className="text-sm font-medium">नोटिफाई — notify me when it's back</label>
+      <label htmlFor="notify-email" className="text-sm font-medium">Notify me when it's back</label>
       <div className="mt-2 flex gap-2">
         <input id="notify-email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
           placeholder="you@email.com" className="h-11 min-w-0 flex-1 rounded-full border border-ink/15 bg-paper px-4 text-sm" />
         <button type="submit" disabled={state === "sending"} className="h-11 rounded-full bg-ink px-5 text-sm font-medium text-paper disabled:opacity-50">
-          {state === "sending" ? "…" : "नोटिफाई"}
+          {state === "sending" ? "…" : "Notify"}
         </button>
       </div>
       {error && <p className="mt-1 text-xs text-clay">{error}</p>}

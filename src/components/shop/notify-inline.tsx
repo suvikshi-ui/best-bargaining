@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { requestStockAlert } from "@/lib/shop/api";
 
-/** Card-level back-in-stock request: a नोटिफाई tag that opens a one-field email form (saves to stock_alerts). */
+/** Card-level back-in-stock request: a Notify tag that opens a one-field email form (saves to stock_alerts). */
 export function NotifyInline({ productId }: { productId: number }) {
   const [open, setOpen] = useState(false);
   const [email, setEmail] = useState("");
@@ -11,7 +11,7 @@ export function NotifyInline({ productId }: { productId: number }) {
   if (!open)
     return (
       <button type="button" onClick={() => setOpen(true)} className="h-10 w-full border border-ink text-sm font-medium">
-        नोटिफाई
+        Notify
       </button>
     );
   return (
@@ -39,7 +39,7 @@ export function NotifyInline({ productId }: { productId: number }) {
         className="h-10 w-full border border-ink/15 bg-paper px-2 text-sm"
       />
       <button type="submit" disabled={state === "sending"} className="h-10 w-full bg-ink text-sm font-medium text-paper disabled:opacity-50">
-        {state === "sending" ? "…" : "नोटिफाई"}
+        {state === "sending" ? "…" : "Notify"}
       </button>
       {error && <p className="text-xs text-clay">{error}</p>}
     </form>
