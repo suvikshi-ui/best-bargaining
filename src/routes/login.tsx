@@ -1,5 +1,5 @@
 import { Navigate, createFileRoute } from "@tanstack/react-router";
-import { OwnerSignButtons } from "@/components/shop/sign-buttons";
+import { OwnerOtpLogin } from "@/components/shop/owner-otp-login";
 import { requireStudioHost } from "@/lib/studio/host";
 import { ShopShell } from "@/components/shop/shell";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
@@ -20,7 +20,7 @@ function Login() {
         <p className="text-sm text-clay">Owner desk</p>
         <h1 className="mt-2 text-4xl font-semibold leading-none">Owner login</h1>
         <p className="mt-3 text-sm text-mist">
-          Only the owner signs in here. Guest orders do not need an account.
+          Only the owner signs in here — enter the owner email and we'll send a one-time code. No password needed.
         </p>
         <div className="mt-8">
           {isPending ? (
@@ -28,7 +28,7 @@ function Login() {
           ) : user ? (
             <Navigate to="/studio" search={{ piece: 0 }} />
           ) : (
-            <OwnerSignButtons redirectTo="/studio" />
+            <OwnerOtpLogin />
           )}
         </div>
       </div>

@@ -41,7 +41,7 @@ import {
  */
 function ownerEmail(): string | null {
   const value = process.env.OWNER_EMAIL?.trim().toLowerCase();
-  return value ? value : null;
+  return value ? value : "contact@bestbargain.in";
 }
 
 async function ensureOwner(userId: string): Promise<"owner" | "locked"> {

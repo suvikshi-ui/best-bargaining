@@ -480,15 +480,27 @@ function Desk() {
         </div>
       </form>
 
-      <h2 className="mt-10 font-display text-3xl">On the shelf</h2>
-      <ul className="mt-2 divide-y divide-ink/10">
+      <div className="mt-10 flex items-baseline justify-between gap-3">
+        <h2 className="font-display text-3xl">On the shelf</h2>
+        <p className="text-sm text-mist tabular-nums">
+          {products.length} pieces · {products.filter((p) => p.stock > 0 && p.stock <= 5).length} low ·{" "}
+          {products.filter((p) => p.stock === 0).length} sold out
+        </p>
+      </div>
+      <ul className="mt-3 divide-y divide-ink/10 rounded-3xl bg-card px-4">
         {products.map((product) => (
           <li key={product.id} className="flex gap-3 py-4">
             <img src={product.image} alt="" className="h-16 w-16 rounded-2xl object-cover" />
             <div className="min-w-0 flex-1">
               <p className="truncate font-medium">
                 {product.name}
-                {!product.published && <span className="text-mist"> · hidden</span>}
+              </p>
+              <p className="mt-1 flex flex-wrap gap-1.5 text-[11px] font-semibold">
+                {!product.published && <span className="rounded-full bg-ink/10 px-2 py-0.5">Hidden</span>}
+                {product.stock === 0 && <span className="rounded-full bg-mist px-2 py-0.5 text-white">Sold out</span>}
+                {product.stock > 0 && product.stock <= 5 && (
+                  <span className="rounded-full bg-clay px-2 py-0.5 text-white">Low stock</span>
+                )}
               </p>
               <p className="text-sm text-mist">
                 {categoryOf(product.category).label} · {inr(product.price)}
@@ -511,10 +523,10 @@ function Desk() {
                 >
                   +
                 </button>
-                <button type="button" onClick={() => edit(product)} className="h-11 px-3 text-sm">
+                <button type="button" onClick={() => edit(product)} className="h-11 rounded-full border border-ink/15 px-4 text-sm">
                   Edit
                 </button>
-                <label className="inline-flex h-11 cursor-pointer items-center px-3 text-sm">
+                <label className="inline-flex h-11 cursor-pointer items-center rounded-full border border-ink/15 px-4 text-sm">
                   Change photo
                   <input
                     type="file"
@@ -534,7 +546,7 @@ function Desk() {
                       setMessage(err instanceof Error ? err.message : "Could not update."),
                     )
                   }
-                  className="h-11 px-3 text-sm text-mist"
+                  className="h-11 rounded-full border border-ink/15 px-4 text-sm text-mist"
                 >
                   {product.published ? "Hide" : "Show"}
                 </button>
@@ -544,7 +556,7 @@ function Desk() {
         ))}
       </ul>
 
-      <h2 className="mt-10 text-3xl font-semibold">Customers</h2>
+      <h2 className="mt-10 font-display text-3xl">Customers</h2>
       <p className="mt-1 text-sm text-mist">
         Everyone who signs in. Their bag, and every order they have placed.
       </p>
@@ -1126,7 +1138,7 @@ function HomeSectionsSettings() {
   };
   return (
     <section className="mt-10" data-testid="home-sections-settings">
-      <h2 className="text-3xl font-semibold">Homepage sections</h2>
+      <h2 className="font-display text-3xl">Homepage sections</h2>
       <p className="mt-1 text-sm text-mist">
         The category sections below the slider, top to bottom. Leave a box empty to keep the default
         text. In the deal line,
@@ -1244,7 +1256,7 @@ function StorefrontSettings() {
 
   return (
     <section className="mt-10">
-      <h2 className="text-3xl font-semibold">Storefront</h2>
+      <h2 className="font-display text-3xl">Storefront</h2>
       <p className="mt-1 text-sm text-mist">Home is always in the top menu. Tick the categories to show next to it.</p>
       <div className="mt-3 grid grid-cols-2 gap-1 sm:grid-cols-3">
         {CATEGORIES.map((category) => (
@@ -1319,7 +1331,7 @@ function ReferralAgents() {
 
   return (
     <section className="mt-10">
-      <h2 className="text-3xl font-semibold">Referral agents</h2>
+      <h2 className="font-display text-3xl">Referral agents</h2>
       <p className="mt-1 text-sm text-mist">
         Type any code for each agent (letters, digits, hyphens). Customers enter it at checkout to
         get the agent&apos;s discount. A code works only once both a code and a % are set.

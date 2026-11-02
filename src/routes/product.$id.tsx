@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { StockLine } from "@/components/shop/product-card";
 import { ShopShell } from "@/components/shop/shell";
 import { useCart } from "@/lib/shop/cart";
 import { getProduct } from "@/lib/shop/api";
@@ -69,9 +70,9 @@ function Piece() {
               </>
             )}
           </div>
-          <p className="mt-1 text-sm text-mist">
-            {gone ? "Gone for now." : `${product.stock} in the shop.`}
-          </p>
+          <div className="mt-2">
+            <StockLine stock={product.stock} />
+          </div>
           {!gone && (
             <div className="mt-6 flex items-center gap-3">
               <button
