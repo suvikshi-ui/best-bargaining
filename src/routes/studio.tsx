@@ -725,6 +725,7 @@ function Desk() {
       )}
 
       <StorefrontSettings />
+      <HeroSliderSection />
       <HomeSectionsSettings />
       <ReferralAgents />
       <DiscountsSection />
@@ -1385,33 +1386,146 @@ function HomeSectionsSettings() {
 }
 
 function StorefrontSettings() {
+  return (
+    <section className="mt-10">
+      <h2 className="font-display text-3xl">Storefront</h2>
+      <p className="mt-1 text-sm text-mist">The top menu lists every category that has pieces. Add a category by typing it on a piece.</p>
+    </section>
+  );
+}
+
+function slideSource(photo: string) {
+  if (photo.startsWith("data:")) return "Uploaded file";
+  if (photo.startsWith("https://")) return "https link";
+  return "Built-in photo";
+}
+
+function HeroSliderSection() {
   const queryClient = useQueryClient();
   const settings = useQuery({ queryKey: ["shop-settings"], queryFn: () => getShopSettings() });
-  const [nav, setNav] = useState<string[] | null>(null);
   const [slides, setSlides] = useState<string[] | null>(null);
+  const [links, setLinks] = useState<string[]>(["", "", "", ""]);
+  const [busy, setBusy] = useState<number | null>(null);
   const [message, setMessage] = useState("");
-  const navValue = nav ?? settings.data?.navCategories ?? [];
-  const slidesValue = slides ?? settings.data?.heroSlides ?? [];
+  const value = slides ?? settings.data?.heroSlides ?? [];
   const save = useMutation({
-    mutationFn: () => saveShopSettings({ data: { navCategories: navValue, heroSlides: slidesValue } }),
+    mutationFn: () =>
+      saveShopSettings({ data: { navCategories: settings.data?.navCategories ?? [], heroSlides: value } }),
     onSuccess: async () => {
-      setMessage("Saved. The shop shows the new menu and slider.");
+      setMessage("Saved. The homepage slider now shows these photos.");
+      setSlides(null);
       await queryClient.invalidateQueries({ queryKey: ["shop-settings"] });
     },
     onError: (err) => setMessage(err instanceof Error ? err.message : "Could not save."),
   });
 
+  function setAt(index: number, photo: string | null) {
+    const next = [...value];
+    if (photo === null) next.splice(index, 1);
+    else next[index] = photo;
+    setSlides(next.slice(0, 4));
+  }
+
+  async function onFile(index: number, file: File | undefined) {
+    if (!file) return;
+    setBusy(index);
+    try {
+      setAt(index, await compressPhoto(file));
+      setMessage("");
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "Could not use that photo.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  function addLink(index: number) {
+    const link = (links[index] ?? "").trim();
+    if (!link) return;
+    if (!/^https:\/\/\S+$/.test(link)) {
+      setMessage("Use an https:// photo link.");
+      return;
+    }
+    setAt(index, link);
+    setLinks(links.map((l, i) => (i === index ? "" : l)));
+    setMessage("");
+  }
+
+  const rows = [0, 1, 2, 3];
   return (
-    <section className="mt-10">
-      <h2 className="font-display text-3xl">Storefront</h2>
-      <p className="mt-1 text-sm text-mist">The top menu lists every category that has pieces. Add a category by typing it on a piece.</p>
-      <PhotoListEditor
-        title="Home slider photos (up to 4, in order). Empty = no slider."
-        photos={slidesValue}
-        max={4}
-        onChange={setSlides}
-        onError={setMessage}
-      />
+    <section className="mt-10" data-testid="hero-slider-section">
+      <h2 className="font-display text-3xl">Homepage slider</h2>
+      <p className="mt-1 text-sm text-mist">
+        Up to 4 photos, shown in this order. Upload a photo or paste an https:// link. Empty = no slider.
+      </p>
+      <div className="mt-3 overflow-x-auto">
+        <table className="w-full min-w-[640px] text-left text-sm">
+          <thead>
+            <tr className="text-xs text-mist">
+              <th className="py-2 pr-3 font-normal">Position</th>
+              <th className="py-2 pr-3 font-normal">Preview</th>
+              <th className="py-2 pr-3 font-normal">Source</th>
+              <th className="py-2 font-normal">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((i) => {
+              const photo = value[i];
+              const filled = photo !== undefined;
+              const canAdd = filled || i === value.length;
+              return (
+                <tr key={i} className="border-t border-ink/10 align-middle" data-testid={`slider-row-${i + 1}`}>
+                  <td className="py-3 pr-3 font-medium tabular-nums">{i + 1}</td>
+                  <td className="py-3 pr-3">
+                    {filled ? (
+                      <img src={photo} alt={`Slide ${i + 1}`} className="h-16 w-28 rounded-xl object-cover" />
+                    ) : (
+                      <span className="grid h-16 w-28 place-items-center rounded-xl bg-card text-xs text-mist">Empty</span>
+                    )}
+                  </td>
+                  <td className="py-3 pr-3 text-mist">{filled ? slideSource(photo) : "—"}</td>
+                  <td className="py-3">
+                    {canAdd ? (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <label className="inline-flex h-10 cursor-pointer items-center rounded-full border border-ink/15 px-4 text-sm">
+                          {busy === i ? "Reading photo…" : filled ? "Replace" : "Upload a photo"}
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="sr-only"
+                            onChange={(event) => {
+                              void onFile(i, event.target.files?.[0]);
+                              event.target.value = "";
+                            }}
+                          />
+                        </label>
+                        <input
+                          type="url"
+                          value={links[i] ?? ""}
+                          onChange={(event) => setLinks(links.map((l, j) => (j === i ? event.target.value : l)))}
+                          placeholder="or paste https:// link"
+                          aria-label={`Slide ${i + 1} photo link`}
+                          className="h-10 w-48 rounded-xl border border-ink/15 bg-paper px-2 text-sm"
+                        />
+                        <button type="button" onClick={() => addLink(i)} className="h-10 rounded-full border border-ink/15 px-4 text-sm">
+                          {filled ? "Replace with link" : "Add"}
+                        </button>
+                        {filled ? (
+                          <button type="button" onClick={() => setAt(i, null)} className="h-10 rounded-full px-4 text-sm text-clay">
+                            Remove
+                          </button>
+                        ) : null}
+                      </div>
+                    ) : (
+                      <span className="text-xs text-mist">Fill slide {value.length + 1} first</span>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
       <button
         type="button"
         onClick={() => save.mutate()}
