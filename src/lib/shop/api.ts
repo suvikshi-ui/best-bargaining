@@ -698,7 +698,7 @@ export const getShopSettings = createServerFn({ method: "GET" }).handler(async (
   `;
   return {
     navCategories: parseJsonList(rows[0]?.nav_categories),
-    heroSlides: parseJsonList(rows[0]?.hero_slides).slice(0, 4),
+    heroSlides: parseJsonList(rows[0]?.hero_slides).slice(0, 5),
     homeSections: resolveHomeSections(
       rows[0]?.home_sections ?? "[]",
       (await sql<{ category: string }>`select category from products where published = true and archived = false group by category order by min(id)`).map((r) => r.category),

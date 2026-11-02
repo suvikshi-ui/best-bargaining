@@ -256,7 +256,7 @@ const productPhotoSchema = z
 
 export const shopSettingsSchema = z.object({
   navCategories: z.array(z.string()).max(40),
-  heroSlides: z.array(photoSchema).max(4, "Up to 4 slider photos."),
+  heroSlides: z.array(photoSchema).max(5, "Up to 5 slider photos."),
 });
 
 export type ShopSettings = z.infer<typeof shopSettingsSchema> & { homeSections: HomeSection[] };

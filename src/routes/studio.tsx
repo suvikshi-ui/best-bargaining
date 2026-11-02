@@ -1404,7 +1404,7 @@ function HeroSliderSection() {
   const queryClient = useQueryClient();
   const settings = useQuery({ queryKey: ["shop-settings"], queryFn: () => getShopSettings() });
   const [slides, setSlides] = useState<string[] | null>(null);
-  const [links, setLinks] = useState<string[]>(["", "", "", ""]);
+  const [links, setLinks] = useState<string[]>(["", "", "", "", ""]);
   const [busy, setBusy] = useState<number | null>(null);
   const [message, setMessage] = useState("");
   const value = slides ?? settings.data?.heroSlides ?? [];
@@ -1423,7 +1423,7 @@ function HeroSliderSection() {
     const next = [...value];
     if (photo === null) next.splice(index, 1);
     else next[index] = photo;
-    setSlides(next.slice(0, 4));
+    setSlides(next.slice(0, 5));
   }
 
   async function onFile(index: number, file: File | undefined) {
@@ -1451,21 +1451,21 @@ function HeroSliderSection() {
     setMessage("");
   }
 
-  const rows = [0, 1, 2, 3];
+  const rows = [0, 1, 2, 3, 4];
   return (
     <section className="mt-10" data-testid="hero-slider-section">
       <h2 className="font-display text-3xl">Homepage slider</h2>
       <p className="mt-1 text-sm text-mist">
-        Up to 4 photos, shown in this order. Upload a photo or paste an https:// link. Empty = no slider.
+        Up to 5 photos, shown in this order. Upload a photo or paste an https:// link. Empty = no slider.
       </p>
       <div className="mt-3 overflow-x-auto">
         <table className="w-full min-w-[640px] text-left text-sm">
           <thead>
             <tr className="text-xs text-mist">
               <th className="py-2 pr-3 font-normal">Position</th>
+              <th className="py-2 pr-3 font-normal">Photo (upload or https link)</th>
               <th className="py-2 pr-3 font-normal">Preview</th>
-              <th className="py-2 pr-3 font-normal">Source</th>
-              <th className="py-2 font-normal">Actions</th>
+              <th className="py-2 font-normal">Replace / Remove</th>
             </tr>
           </thead>
           <tbody>
@@ -1478,17 +1478,11 @@ function HeroSliderSection() {
                   <td className="py-3 pr-3 font-medium tabular-nums">{i + 1}</td>
                   <td className="py-3 pr-3">
                     {filled ? (
-                      <img src={photo} alt={`Slide ${i + 1}`} className="h-16 w-28 rounded-xl object-cover" />
-                    ) : (
-                      <span className="grid h-16 w-28 place-items-center rounded-xl bg-card text-xs text-mist">Empty</span>
-                    )}
-                  </td>
-                  <td className="py-3 pr-3 text-mist">{filled ? slideSource(photo) : "—"}</td>
-                  <td className="py-3">
-                    {canAdd ? (
+                      <span className="text-mist">{slideSource(photo)}</span>
+                    ) : canAdd ? (
                       <div className="flex flex-wrap items-center gap-2">
                         <label className="inline-flex h-10 cursor-pointer items-center rounded-full border border-ink/15 px-4 text-sm">
-                          {busy === i ? "Reading photo…" : filled ? "Replace" : "Upload a photo"}
+                          {busy === i ? "Reading photo…" : "Upload a photo"}
                           <input
                             type="file"
                             accept="image/*"
@@ -1508,16 +1502,41 @@ function HeroSliderSection() {
                           className="h-10 w-48 rounded-xl border border-ink/15 bg-paper px-2 text-sm"
                         />
                         <button type="button" onClick={() => addLink(i)} className="h-10 rounded-full border border-ink/15 px-4 text-sm">
-                          {filled ? "Replace with link" : "Add"}
+                          Add
                         </button>
-                        {filled ? (
-                          <button type="button" onClick={() => setAt(i, null)} className="h-10 rounded-full px-4 text-sm text-clay">
-                            Remove
-                          </button>
-                        ) : null}
                       </div>
                     ) : (
                       <span className="text-xs text-mist">Fill slide {value.length + 1} first</span>
+                    )}
+                  </td>
+                  <td className="py-3 pr-3">
+                    {filled ? (
+                      <img src={photo} alt={`Slide ${i + 1}`} className="h-16 w-28 rounded-xl object-cover" />
+                    ) : (
+                      <span className="grid h-16 w-28 place-items-center rounded-xl bg-card text-xs text-mist">Empty</span>
+                    )}
+                  </td>
+                  <td className="py-3">
+                    {filled ? (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <label className="inline-flex h-10 cursor-pointer items-center rounded-full border border-ink/15 px-4 text-sm">
+                          {busy === i ? "Reading photo…" : "Replace"}
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="sr-only"
+                            onChange={(event) => {
+                              void onFile(i, event.target.files?.[0]);
+                              event.target.value = "";
+                            }}
+                          />
+                        </label>
+                        <button type="button" onClick={() => setAt(i, null)} className="h-10 rounded-full px-4 text-sm text-clay">
+                          Remove
+                        </button>
+                      </div>
+                    ) : (
+                      <span className="text-xs text-mist">—</span>
                     )}
                   </td>
                 </tr>
