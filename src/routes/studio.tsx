@@ -99,12 +99,12 @@ const emptyDraft = (): Draft => ({
 });
 
 type DeskTab = "slider" | "details" | "book" | "orders" | "add";
-const DESK_TABS: { id: DeskTab; label: string }[] = [
-  { id: "slider", label: "Home Page Slider" },
-  { id: "details", label: "Customer Details" },
-  { id: "book", label: "Customer Book" },
-  { id: "orders", label: "Orders" },
-  { id: "add", label: "Add Piece" },
+const DESK_TABS: { id: DeskTab; label: string; icon: string }[] = [
+  { id: "slider", label: "Home Page Slider", icon: "🖼" },
+  { id: "details", label: "Customer Details", icon: "👤" },
+  { id: "book", label: "Customer Book", icon: "📒" },
+  { id: "orders", label: "Orders", icon: "📦" },
+  { id: "add", label: "Add Piece", icon: "➕" },
 ];
 
 function Studio() {
@@ -334,16 +334,17 @@ function Desk() {
 
   return (
     <div>
-      <nav aria-label="Owner desk menu" className="-mx-1 mb-6 flex gap-1 overflow-x-auto border-b border-ink/10 pb-2" data-testid="desk-menu">
+      <nav aria-label="Owner desk menu" className="mb-6 grid grid-cols-2 gap-2 border-b border-ink/10 pb-4 sm:grid-cols-3 lg:grid-cols-5" data-testid="desk-menu">
         {DESK_TABS.map((item) => (
           <button
             key={item.id}
             type="button"
             onClick={() => chooseTab(item.id)}
             aria-current={tab === item.id ? "page" : undefined}
-            className={`h-10 shrink-0 rounded-full px-4 text-sm ${tab === item.id ? "bg-ink text-paper" : "text-ink hover:bg-card"}`}
+            className={`flex min-h-12 items-center justify-center gap-2 rounded-2xl px-3 py-2 text-center text-sm font-medium leading-tight ${tab === item.id ? "bg-ink text-paper" : "border border-ink/15 bg-card text-ink hover:border-ink/40"}`}
           >
-            {item.label}
+            <span aria-hidden="true">{item.icon}</span>
+            <span>{item.label}</span>
           </button>
         ))}
       </nav>
