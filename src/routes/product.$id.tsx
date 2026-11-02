@@ -50,7 +50,7 @@ function Piece() {
         <ProductGallery photos={[product.image, ...(product.images ?? [])]} name={product.name} />
         <div>
           <p className="text-sm text-mist">
-            {category.label} · {category.hindi}
+            {category.label}
           </p>
           <h1 className="mt-2 text-3xl font-semibold leading-tight md:text-4xl">{product.name}</h1>
           <p className="mt-3 max-w-md text-sm text-mist">{product.blurb}</p>
