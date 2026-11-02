@@ -1,13 +1,15 @@
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { cn } from "@/lib/cn";
+import { NotifyInline } from "@/components/shop/notify-inline";
 import { useCart } from "@/lib/shop/cart";
 import { cardOff, inr, type Product } from "@/lib/shop/catalog";
 
 export function ProductCard({ product }: { product: Product }) {
   const addQty = useCart((state) => state.addQty);
   const [held, setHeld] = useState(false);
-  const gone = product.stock === 0;
+  // Real on-hand quantity only; the public display count never triggers sold-out.
+  const gone = product.stock <= 0;
   const off = cardOff(product);
   // One badge per card, highest priority wins.
   const badge = gone
@@ -58,8 +60,13 @@ export function ProductCard({ product }: { product: Product }) {
             <span className="text-xs text-mist line-through tabular-nums">{inr(product.compareAt)}</span>
           )}
         </p>
-        <StockLine stock={product.shownStock} />
+        <StockLine stock={gone ? 0 : product.shownStock} />
         <div className="pt-2" />
+        {gone ? (
+          <div className="mt-auto">
+            <NotifyInline productId={product.id} />
+          </div>
+        ) : null}
         <button
           type="button"
           disabled={gone}
@@ -68,7 +75,10 @@ export function ProductCard({ product }: { product: Product }) {
             setHeld(true);
             window.setTimeout(() => setHeld(false), 900);
           }}
-          className="mt-auto h-10 w-full bg-ink text-sm font-medium text-paper transition-transform duration-150 active:scale-[0.98] disabled:opacity-40"
+          className={cn(
+            "h-10 w-full bg-ink text-sm font-medium text-paper transition-transform duration-150 active:scale-[0.98] disabled:opacity-40",
+            gone ? "mt-2" : "mt-auto",
+          )}
         >
           {gone ? "Sold out" : held ? "Added" : "Add to bag"}
         </button>
@@ -79,7 +89,7 @@ export function ProductCard({ product }: { product: Product }) {
 
 /** Real counts only — thresholds, never invented urgency. */
 export function StockLine({ stock }: { stock: number }) {
-  if (stock === 0) return <p className="text-xs text-mist">Sold out</p>;
+  if (stock <= 0) return <p className="text-xs font-medium text-clay">स्टॉक सेल हो गया</p>;
   if (stock <= 2)
     return (
       <p className="w-fit rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-800">
