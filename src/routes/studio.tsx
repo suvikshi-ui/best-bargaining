@@ -11,6 +11,7 @@ import { useCategories } from "@/lib/shop/use-categories";
 import {
   deleteProduct,
   restoreProduct,
+  deleteCancelledOrder,
   getStockAlerts,
   markStockAlertsNotified,
   setOrderStatus,
@@ -1881,6 +1882,21 @@ function OrderStatusSelect({ id, status }: { id: number; status: OrderStatus }) 
         }}>
         {ORDER_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
       </select>
+      {value === "cancelled" && (
+        <button
+          type="button"
+          className="mt-1 block text-xs text-clay underline"
+          onClick={() => {
+            if (!window.confirm(`Delete cancelled order #${id} permanently?`)) return;
+            setError("");
+            void deleteCancelledOrder({ data: id })
+              .then(() => queryClient.invalidateQueries({ queryKey: ["studio"] }))
+              .catch((err: unknown) => setError(err instanceof Error ? err.message : "Could not delete."));
+          }}
+        >
+          Delete order
+        </button>
+      )}
       {error && <span className="block text-xs text-clay">{error}</span>}
     </span>
   );

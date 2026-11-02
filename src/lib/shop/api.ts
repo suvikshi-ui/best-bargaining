@@ -1113,6 +1113,23 @@ export const saveStackSetting = createServerFn({ method: "POST" })
     return { ok: true as const };
   });
 
+/** Owner: permanently delete an order that is already cancelled (stock was returned when it was cancelled). */
+export const deleteCancelledOrder = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((id: unknown) => {
+    const parsed = typeof id === "number" ? id : Number(id);
+    if (!Number.isInteger(parsed) || parsed < 1) throw new Error("Missing order.");
+    return parsed;
+  })
+  .handler(async ({ context, data: id }) => {
+    const role = await ensureOwner(context.userId);
+    if (role !== "owner") throw new Error("Only the shop owner can delete orders.");
+    const sql = await getSql();
+    const rows = await sql<{ id: number }>`delete from orders where id = ${id} and status = 'cancelled' returning id`;
+    if (!rows.length) throw new Error("Only cancelled orders can be deleted.");
+    return { ok: true as const };
+  });
+
 /** Owner: move an order along. Cancelling puts its items back on the shelf once. */
 export const setOrderStatus = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
