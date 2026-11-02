@@ -98,6 +98,15 @@ const emptyDraft = (): Draft => ({
   showDescription: true,
 });
 
+type DeskTab = "slider" | "details" | "book" | "orders" | "add";
+const DESK_TABS: { id: DeskTab; label: string }[] = [
+  { id: "slider", label: "होम पेज स्लाइडर" },
+  { id: "details", label: "कस्टमर का डिटेल" },
+  { id: "book", label: "कस्टमर का बुक" },
+  { id: "orders", label: "ऑर्डर" },
+  { id: "add", label: "ऐड पीस" },
+];
+
 function Studio() {
   const { user, isPending } = useCurrentUserState();
   return (
@@ -181,6 +190,20 @@ function Desk() {
     opened.current = piece;
     edit(product);
   }, [piece, studio.data]);
+
+  const [tab, setTab] = useState<DeskTab>("slider");
+  useEffect(() => {
+    const fromHash = window.location.hash.replace("#", "") as DeskTab;
+    if (DESK_TABS.some((item) => item.id === fromHash)) setTab(fromHash);
+  }, []);
+  function chooseTab(next: DeskTab) {
+    setTab(next);
+    try {
+      window.history.replaceState(null, "", `#${next}`);
+    } catch {
+      /* ignore */
+    }
+  }
 
   if (studio.isPending) return <div className="h-80 animate-pulse rounded-3xl bg-card" />;
   if (studio.isError) {
@@ -310,13 +333,111 @@ function Desk() {
 
   return (
     <div>
+      <nav aria-label="Owner desk menu" className="-mx-1 mb-6 flex gap-1 overflow-x-auto border-b border-ink/10 pb-2" data-testid="desk-menu">
+        {DESK_TABS.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            onClick={() => chooseTab(item.id)}
+            aria-current={tab === item.id ? "page" : undefined}
+            className={`h-10 shrink-0 rounded-full px-4 text-sm ${tab === item.id ? "bg-ink text-paper" : "text-ink hover:bg-card"}`}
+          >
+            {item.label}
+          </button>
+        ))}
+      </nav>
+
+      {tab === "slider" && (
+        <>
+      <SiteEditor />
+
+      <StorefrontSettings />
+      <HeroSliderSection />
+      <HomeSectionsSettings />
+      <ChangePassword />
+        </>
+      )}
+      {tab === "details" && (
+        <>
+      <h2 className="mt-10 font-display text-3xl">Customers</h2>
+      <p className="mt-1 text-sm text-mist">
+        Everyone who signs in. Their bag, and every order they have placed.
+      </p>
+      {studio.data.customers.length === 0 ? (
+        <p className="mt-2 text-sm text-mist">No customer has signed in yet.</p>
+      ) : (
+        <ul className="mt-3 space-y-3">
+          {studio.data.customers.map((customer) => (
+            <li key={customer.userId} className="rounded-2xl bg-card px-4 py-3">
+              <p className="font-medium">{customer.name || "Customer"}</p>
+              <p className="text-sm">{customer.email || "No login email"}</p>
+              <p className="text-sm tabular-nums">{customer.phone || "No mobile yet"}</p>
+              <p className="mt-2 text-sm font-medium">Bag</p>
+              {customer.bag.length === 0 ? (
+                <p className="text-sm text-mist">Bag is empty.</p>
+              ) : (
+                <p className="text-sm text-mist">
+                  {customer.bag.map((line) => `${line.qty} × ${line.name}`).join(", ")}
+                </p>
+              )}
+              <p className="mt-2 text-sm font-medium">Order history</p>
+              {customer.orders.length === 0 ? (
+                <p className="text-sm text-mist">No orders yet.</p>
+              ) : (
+                <ul className="mt-1 space-y-1 text-sm text-mist">
+                  {customer.orders.map((order) => (
+                    <li key={order.id}>
+                      #{order.id} · {inr(order.total)} ·{" "}
+                      {order.items.map((item) => `${item.qty} × ${item.name}`).join(", ")}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+
+        </>
+      )}
+      {tab === "book" && (
+        <>
+      <ReferralAgents />
+      <DiscountsSection />
+      <LoyalGuests />
+        </>
+      )}
+      {tab === "orders" && (
+        <>
+      <OrdersTable orders={studio.data.orders} />
+      <details open className="mt-6 rounded-3xl bg-card p-4">
+        <summary className="cursor-pointer text-sm font-medium">Stock history (last {movements.length})</summary>
+        {movements.length === 0 ? (
+          <p className="mt-3 text-sm text-mist">No stock changes recorded yet.</p>
+        ) : (
+          <ul className="mt-3 divide-y divide-ink/10 text-sm">
+            {movements.map((m) => (
+              <li key={m.id} className="flex flex-wrap items-baseline gap-x-3 py-2 tabular-nums">
+                <span className={m.delta < 0 ? "text-clay" : "text-emerald-700"}>{m.delta > 0 ? `+${m.delta}` : m.delta}</span>
+                <span className="min-w-0 flex-1 truncate">{m.name}</span>
+                <span className="text-mist">
+                  {m.reason === "order" ? `Order #${m.orderId}` : m.reason === "order_rollback" ? `Cancelled #${m.orderId}` : m.reason === "restock" ? "Restock" : "Owner edit"} · now {m.stockAfter}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </details>
+
+        </>
+      )}
+      {tab === "add" && (
+        <>
       <dl className="grid grid-cols-3 gap-3">
         <Stat label="Pieces" value={String(products.length)} />
         <Stat label="Departments" value={String(departments)} />
         <Stat label="Low stock" value={String(low)} />
       </dl>
-
-      <SiteEditor />
 
       <form
         id="desk-form"
@@ -649,7 +770,7 @@ function Desk() {
       </ul>
 
       {archived.length > 0 && (
-        <details className="mt-6 rounded-3xl bg-card p-4">
+        <details open className="mt-6 rounded-3xl bg-card p-4">
           <summary className="cursor-pointer text-sm font-medium">Archived pieces ({archived.length})</summary>
           <ul className="mt-3 divide-y divide-ink/10">
             {archived.map((product) => (
@@ -666,72 +787,8 @@ function Desk() {
         </details>
       )}
 
-      <details className="mt-6 rounded-3xl bg-card p-4">
-        <summary className="cursor-pointer text-sm font-medium">Stock history (last {movements.length})</summary>
-        {movements.length === 0 ? (
-          <p className="mt-3 text-sm text-mist">No stock changes recorded yet.</p>
-        ) : (
-          <ul className="mt-3 divide-y divide-ink/10 text-sm">
-            {movements.map((m) => (
-              <li key={m.id} className="flex flex-wrap items-baseline gap-x-3 py-2 tabular-nums">
-                <span className={m.delta < 0 ? "text-clay" : "text-emerald-700"}>{m.delta > 0 ? `+${m.delta}` : m.delta}</span>
-                <span className="min-w-0 flex-1 truncate">{m.name}</span>
-                <span className="text-mist">
-                  {m.reason === "order" ? `Order #${m.orderId}` : m.reason === "order_rollback" ? `Cancelled #${m.orderId}` : m.reason === "restock" ? "Restock" : "Owner edit"} · now {m.stockAfter}
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </details>
-
-      <h2 className="mt-10 font-display text-3xl">Customers</h2>
-      <p className="mt-1 text-sm text-mist">
-        Everyone who signs in. Their bag, and every order they have placed.
-      </p>
-      {studio.data.customers.length === 0 ? (
-        <p className="mt-2 text-sm text-mist">No customer has signed in yet.</p>
-      ) : (
-        <ul className="mt-3 space-y-3">
-          {studio.data.customers.map((customer) => (
-            <li key={customer.userId} className="rounded-2xl bg-card px-4 py-3">
-              <p className="font-medium">{customer.name || "Customer"}</p>
-              <p className="text-sm">{customer.email || "No login email"}</p>
-              <p className="text-sm tabular-nums">{customer.phone || "No mobile yet"}</p>
-              <p className="mt-2 text-sm font-medium">Bag</p>
-              {customer.bag.length === 0 ? (
-                <p className="text-sm text-mist">Bag is empty.</p>
-              ) : (
-                <p className="text-sm text-mist">
-                  {customer.bag.map((line) => `${line.qty} × ${line.name}`).join(", ")}
-                </p>
-              )}
-              <p className="mt-2 text-sm font-medium">Order history</p>
-              {customer.orders.length === 0 ? (
-                <p className="text-sm text-mist">No orders yet.</p>
-              ) : (
-                <ul className="mt-1 space-y-1 text-sm text-mist">
-                  {customer.orders.map((order) => (
-                    <li key={order.id}>
-                      #{order.id} · {inr(order.total)} ·{" "}
-                      {order.items.map((item) => `${item.qty} × ${item.name}`).join(", ")}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </li>
-          ))}
-        </ul>
+        </>
       )}
-
-      <StorefrontSettings />
-      <HeroSliderSection />
-      <HomeSectionsSettings />
-      <ReferralAgents />
-      <DiscountsSection />
-      <LoyalGuests />
-      <ChangePassword />
-      <OrdersTable orders={studio.data.orders} />
     </div>
   );
 
