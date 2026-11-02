@@ -2,7 +2,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { OwnerOtpLogin } from "@/components/shop/owner-otp-login";
-import { ChangePassword } from "@/components/studio/change-password";
 import { DiscountsSection, LoyalGuests } from "@/components/studio/discounts";
 import { requireStudioHost } from "@/lib/studio/host";
 import { ShopShell } from "@/components/shop/shell";
@@ -356,7 +355,6 @@ function Desk() {
       <StorefrontSettings />
       <HeroSliderSection />
       <HomeSectionsSettings />
-      <ChangePassword />
         </>
       )}
       {tab === "details" && (
