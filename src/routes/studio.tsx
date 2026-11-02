@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { OwnerSignButtons } from "@/components/shop/sign-buttons";
+import { OwnerOtpLogin } from "@/components/shop/owner-otp-login";
 import { ChangePassword } from "@/components/studio/change-password";
 import { DiscountsSection, LoyalGuests } from "@/components/studio/discounts";
 import { requireStudioHost } from "@/lib/studio/host";
@@ -115,9 +115,9 @@ function Studio() {
         ) : (
           <div className="max-w-sm">
             <p className="mb-4 text-sm text-mist">
-              Log in to open the desk. First login becomes the owner.
+              Owner only — enter the owner email and we'll send a one-time code. No password needed.
             </p>
-            <OwnerSignButtons />
+            <OwnerOtpLogin />
           </div>
         )}
       </div>

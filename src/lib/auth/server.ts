@@ -112,6 +112,8 @@ const vercelHostnames = [
   "www.bestbargain.in",
   "studio.bestbargain.in",
   env("STUDIO_HOST"),
+  "bestbargain.vercel.app",
+  "bestbargain-*-hotel-status.vercel.app",
   "rainside-shop.vercel.app",
   "rainside-shop-*-hotel-status.vercel.app",
   env("VERCEL_URL"),
