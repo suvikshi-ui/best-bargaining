@@ -3,10 +3,10 @@ import { Search, ShoppingBag, Store } from "lucide-react";
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { cn } from "@/lib/cn";
-import { getShopSettings } from "@/lib/shop/api";
+import { listProducts } from "@/lib/shop/api";
 import { useCart } from "@/lib/shop/cart";
 import { BagSync } from "@/components/shop/bag-sync";
-import { CATEGORIES, readCat, type ShopCat } from "@/lib/shop/catalog";
+import { categoriesFrom, readCat, type ShopCat } from "@/lib/shop/catalog";
 
 function useBagCount() {
   const count = useCart((state) => state.lines.reduce((sum, line) => sum + line.qty, 0));
@@ -15,15 +15,12 @@ function useBagCount() {
   return ready ? count : 0;
 }
 
-/** Fallback when the owner has not saved a menu yet: Home only. */
-const DEFAULT_NAV_CATEGORY_IDS: string[] = [];
 
 function useNavCats(): { id: ShopCat; label: string }[] {
-  const settings = useQuery({ queryKey: ["shop-settings"], queryFn: () => getShopSettings(), staleTime: 60_000 });
-  const ids = settings.data?.navCategories ?? DEFAULT_NAV_CATEGORY_IDS;
+  const products = useQuery({ queryKey: ["products"], queryFn: () => listProducts(), staleTime: 60_000 });
   return [
     { id: "all", label: "Home" },
-    ...CATEGORIES.filter((item) => ids.includes(item.id)).map((item) => ({ id: item.id, label: item.label })),
+    ...categoriesFrom(products.data ?? []).map((item) => ({ id: item.id, label: item.label })),
   ];
 }
 

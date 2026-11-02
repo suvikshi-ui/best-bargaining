@@ -5,7 +5,7 @@ import { StockLine } from "@/components/shop/product-card";
 import { ShopShell } from "@/components/shop/shell";
 import { useCart } from "@/lib/shop/cart";
 import { getProduct, requestStockAlert } from "@/lib/shop/api";
-import { categoryOf, inr, offPercent, parseVariants } from "@/lib/shop/catalog";
+import { cardOff, categoryOf, inr, parseVariants } from "@/lib/shop/catalog";
 
 export const Route = createFileRoute("/product/$id")({
   loader: ({ params }) => getProduct({ data: Number(params.id) }),
@@ -61,17 +61,17 @@ function Piece() {
           ) : null}
           <div className="mt-5 flex flex-wrap items-center gap-3">
             <p className="text-3xl font-semibold tabular-nums">{inr(product.price)}</p>
-            {offPercent(product.price, product.compareAt) > 0 && (
+            {cardOff(product) > 0 && (
               <>
                 <p className="text-sm text-mist line-through tabular-nums">{inr(product.compareAt)}</p>
                 <p className="bg-clay px-2 py-1 text-xs font-semibold text-white">
-                  {offPercent(product.price, product.compareAt)}% OFF
+                  {cardOff(product)}% OFF
                 </p>
               </>
             )}
           </div>
           <div className="mt-2">
-            <StockLine stock={product.stock} />
+            <StockLine stock={product.shownStock} />
             {product.saleActive && product.saleEndsAt ? (
               <p className="mt-1 text-xs text-mist">
                 Sale ends {new Date(product.saleEndsAt).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}

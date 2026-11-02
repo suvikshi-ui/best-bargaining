@@ -1,7 +1,8 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { deleteDiscount, listDiscounts, saveDiscount, saveStackSetting, type StudioDiscount } from "@/lib/shop/api";
-import { CATEGORIES, inr } from "@/lib/shop/catalog";
+import { inr } from "@/lib/shop/catalog";
+import { useCategories } from "@/lib/shop/use-categories";
 import { DISCOUNT_TYPES, typeLabel, type DiscountType } from "@/lib/shop/discounts";
 
 const input = "h-9 rounded-xl border border-ink/15 bg-paper px-2 text-sm";
@@ -186,6 +187,7 @@ function DiscountForm({
   const [form, setForm] = useState<Form>(initial);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const cats = useCategories();
   const fields = FIELDS[form.type];
   const set = (patch: Partial<Form>) => setForm((prev) => ({ ...prev, ...patch }));
 
@@ -259,7 +261,7 @@ function DiscountForm({
         <fieldset className="md:col-span-3">
           <legend className="text-xs text-mist">Only these categories (none ticked = whole bag)</legend>
           <div className="mt-1 flex flex-wrap gap-3 text-sm">
-            {CATEGORIES.map((category) => (
+            {cats.map((category) => (
               <label key={category.id} className="flex items-center gap-1">
                 <input
                   type="checkbox"

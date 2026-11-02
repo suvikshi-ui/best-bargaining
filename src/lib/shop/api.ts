@@ -7,7 +7,6 @@ import {
   asProduct,
   customerSchema,
   productWriteSchema,
-  CATEGORIES,
   type Product,
   type ProductWrite,
   type ShopCustomer,
@@ -25,7 +24,6 @@ import {
   saleIsLive,
   ORDER_STATUSES,
   type OrderStatus,
-  CATEGORIES as ALL_CATEGORIES,
 } from "@/lib/shop/catalog";
 import {
   quote as computeQuote,
@@ -94,7 +92,7 @@ async function ensureOwner(userId: string): Promise<"owner" | "locked"> {
 export const listProducts = createServerFn({ method: "GET" }).handler(async () => {
   const sql = await getSql();
   const rows = await sql<Product>`
-    select id, name, category, price, compare_at, sale_price, sale_starts_at::text as sale_starts_at, sale_ends_at::text as sale_ends_at, variants, stock, blurb, image, badge, published
+    select id, name, category, price, compare_at, public_stock, card_off_pct, sale_price, sale_starts_at::text as sale_starts_at, sale_ends_at::text as sale_ends_at, variants, stock, blurb, image, badge, published
     from products
     where published = true and archived = false
     order by category, id asc
@@ -112,7 +110,7 @@ export const getProduct = createServerFn({ method: "GET" })
     if (id < 1) return null;
     const sql = await getSql();
     const rows = await sql<Product>`
-      select id, name, category, price, compare_at, sale_price, sale_starts_at::text as sale_starts_at, sale_ends_at::text as sale_ends_at, variants, stock, blurb, image, badge, published, images, description, show_description
+      select id, name, category, price, compare_at, public_stock, card_off_pct, sale_price, sale_starts_at::text as sale_starts_at, sale_ends_at::text as sale_ends_at, variants, stock, blurb, image, badge, published, images, description, show_description
       from products
       where id = ${id} and archived = false and published = true
     `;
@@ -145,7 +143,7 @@ export const savePage = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const role = await ensureOwner(context.userId);
     if (role !== "owner") throw new Error("Only the shop owner can edit the site.");
-    const allowed = data.slug === "home" || CATEGORIES.some((item) => item.id === data.slug);
+    const allowed = data.slug === "home" || /^[a-z0-9-]{1,40}$/.test(data.slug);
     if (!allowed) throw new Error("That page is not on the site.");
     const sql = await getSql();
     await sql`
@@ -165,7 +163,7 @@ export const getStudio = createServerFn({ method: "GET" })
     }
     const sql = await getSql();
     const products = await sql<Product>`
-      select id, name, category, price, compare_at, sale_price, sale_starts_at::text as sale_starts_at, sale_ends_at::text as sale_ends_at, variants, stock, blurb, image, badge, published, images, description, show_description, archived
+      select id, name, category, price, compare_at, public_stock, card_off_pct, sale_price, sale_starts_at::text as sale_starts_at, sale_ends_at::text as sale_ends_at, variants, stock, blurb, image, badge, published, images, description, show_description, archived
       from products
       where user_id = ${context.userId}
       order by archived asc, id desc
@@ -322,6 +320,8 @@ export const saveProduct = createServerFn({ method: "POST" })
           badge = ${data.badge},
           published = ${data.published},
           compare_at = ${data.compareAt > 0 ? data.compareAt : null},
+          public_stock = ${data.publicStock},
+          card_off_pct = ${data.cardOffPct > 0 ? data.cardOffPct : null},
           images = ${JSON.stringify(data.images)},
           description = ${data.description},
           show_description = ${data.showDescription},
@@ -338,25 +338,27 @@ export const saveProduct = createServerFn({ method: "POST" })
       return { id: Number(rows[0].id) };
     }
     const rows = await sql<{ id: number }>`
-      insert into products (user_id, name, category, price, compare_at, sale_price, sale_starts_at::text as sale_starts_at, sale_ends_at::text as sale_ends_at, variants, stock, blurb, image, badge, published, images, description, show_description)
+      insert into products (user_id, name, category, price, compare_at, sale_price, sale_starts_at, sale_ends_at, variants, stock, public_stock, card_off_pct, blurb, image, badge, published, images, description, show_description)
       values (
         ${context.userId},
         ${data.name},
         ${data.category},
         ${data.price},
         ${data.compareAt > 0 ? data.compareAt : null},
+        ${data.salePrice > 0 ? data.salePrice : null},
+        ${data.saleStartsAt || null},
+        ${data.saleEndsAt || null},
+        ${data.variants},
         ${data.stock},
+        ${data.publicStock},
+        ${data.cardOffPct > 0 ? data.cardOffPct : null},
         ${data.blurb},
         ${data.image},
         ${data.badge},
         ${data.published},
         ${JSON.stringify(data.images)},
         ${data.description},
-        ${data.showDescription},
-        ${data.salePrice > 0 ? data.salePrice : null},
-        ${data.saleStartsAt || null},
-        ${data.saleEndsAt || null},
-        ${data.variants}
+        ${data.showDescription}
       )
       returning id
     `;
@@ -697,7 +699,10 @@ export const getShopSettings = createServerFn({ method: "GET" }).handler(async (
   return {
     navCategories: parseJsonList(rows[0]?.nav_categories),
     heroSlides: parseJsonList(rows[0]?.hero_slides).slice(0, 4),
-    homeSections: resolveHomeSections(rows[0]?.home_sections ?? "[]"),
+    homeSections: resolveHomeSections(
+      rows[0]?.home_sections ?? "[]",
+      (await sql<{ category: string }>`select category from products where published = true and archived = false group by category order by min(id)`).map((r) => r.category),
+    ),
   };
 });
 
@@ -1023,7 +1028,7 @@ const discountWriteSchema = z.object({
   startsAt: optDate,
   endsAt: optDate,
   categories: z.array(z.string()).max(40).default([]).transform((ids) =>
-    ids.filter((id) => ALL_CATEGORIES.some((item) => item.id === id)),
+    ids,
   ),
   maxUses: optInt(0, 1_000_000, "Max uses"),
   active: z.boolean().default(false),

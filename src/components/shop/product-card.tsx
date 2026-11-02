@@ -2,13 +2,13 @@ import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { cn } from "@/lib/cn";
 import { useCart } from "@/lib/shop/cart";
-import { inr, offPercent, type Product } from "@/lib/shop/catalog";
+import { cardOff, inr, type Product } from "@/lib/shop/catalog";
 
 export function ProductCard({ product }: { product: Product }) {
   const addQty = useCart((state) => state.addQty);
   const [held, setHeld] = useState(false);
   const gone = product.stock === 0;
-  const off = offPercent(product.price, product.compareAt);
+  const off = cardOff(product);
   // One badge per card, highest priority wins.
   const badge = gone
     ? { label: "SOLD OUT", tone: "bg-mist" }
@@ -58,7 +58,7 @@ export function ProductCard({ product }: { product: Product }) {
             <span className="text-xs text-mist line-through tabular-nums">{inr(product.compareAt)}</span>
           )}
         </p>
-        <StockLine stock={product.stock} />
+        <StockLine stock={product.shownStock} />
         <div className="pt-2" />
         <button
           type="button"

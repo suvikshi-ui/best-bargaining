@@ -10,7 +10,7 @@ import {
   categoryOnHome,
   dealLine,
   resolveHomeSections,
-  offPercent,
+  cardOff,
   readCat,
   readQuery,
   type Product,
@@ -167,7 +167,7 @@ function Home() {
 
 function maxOff(items: Product[]) {
   return items.reduce(
-    (best, product) => Math.max(best, offPercent(product.price, product.compareAt)),
+    (best, product) => Math.max(best, cardOff(product)),
     0,
   );
 }

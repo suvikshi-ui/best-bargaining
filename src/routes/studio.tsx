@@ -8,6 +8,7 @@ import { requireStudioHost } from "@/lib/studio/host";
 import { ShopShell } from "@/components/shop/shell";
 import { UserButton } from "@/lib/auth/gates";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
+import { useCategories } from "@/lib/shop/use-categories";
 import {
   deleteProduct,
   restoreProduct,
@@ -27,8 +28,8 @@ import {
   saveHomeSections,
 } from "@/lib/shop/api";
 import {
-  CATEGORIES,
   PHOTOS,
+  categoriesFrom,
   categoryOf,
   inr,
   productWriteSchema,
@@ -60,6 +61,8 @@ type Draft = {
   category: CategoryId;
   price: string;
   stock: string;
+  publicStock: string;
+  cardOff: string;
   blurb: string;
   image: string;
   badge: Badge;
@@ -76,9 +79,11 @@ type Draft = {
 
 const emptyDraft = (): Draft => ({
   name: "",
-  category: "gadgets",
+  category: "",
   price: "",
   stock: "1",
+  publicStock: "",
+  cardOff: "",
   blurb: "",
   image: "",
   badge: "",
@@ -207,6 +212,8 @@ function Desk() {
       id: draft.id,
       price: Math.round(Number(draft.price)),
       stock: Math.round(Number(draft.stock)),
+      publicStock: draft.publicStock.trim() === "" ? null : Math.round(Number(draft.publicStock)),
+      cardOffPct: draft.cardOff.trim() === "" ? 0 : Math.round(Number(draft.cardOff)),
       compareAt: draft.compare.trim() === "" ? 0 : Math.round(Number(draft.compare)),
       salePrice: draft.sale.trim() === "" ? 0 : Math.round(Number(draft.sale)),
       saleStartsAt: draft.saleStarts ? new Date(draft.saleStarts).toISOString() : "",
@@ -227,9 +234,11 @@ function Desk() {
     setDraft({
       id: product.id,
       name: product.name,
-      category: product.category,
+      category: categoryOf(product.category).label,
       price: String(product.basePrice ?? product.price),
       stock: String(product.stock),
+      publicStock: product.publicStock == null ? "" : String(product.publicStock),
+      cardOff: product.cardOffPct > 0 ? String(product.cardOffPct) : "",
       blurb: product.blurb,
       image: product.image,
       badge: product.badge,
@@ -329,21 +338,22 @@ function Desk() {
               required
             />
           </Field>
-          <Field label="Category" htmlFor="piece-cat">
-            <select
+          <Field label="Category — type a new one or pick an existing one" htmlFor="piece-cat">
+            <input
               id="piece-cat"
+              list="piece-cat-list"
               value={draft.category}
-              onChange={(event) =>
-                setDraft({ ...draft, category: event.target.value as CategoryId })
-              }
+              maxLength={40}
+              required
+              placeholder="e.g. Kitchen"
+              onChange={(event) => setDraft({ ...draft, category: event.target.value })}
               className={inputClass}
-            >
-              {CATEGORIES.map((category) => (
-                <option key={category.id} value={category.id}>
-                  {category.label}
-                </option>
+            />
+            <datalist id="piece-cat-list">
+              {categoriesFrom(allProducts).map((category) => (
+                <option key={category.id} value={category.label} />
               ))}
-            </select>
+            </datalist>
           </Field>
           <Field label="Price in ₹" htmlFor="piece-price">
             <input
@@ -395,7 +405,7 @@ function Desk() {
               onChange={(event) => setDraft({ ...draft, variants: event.target.value })}
               className={`${inputClass} h-auto py-2`} placeholder={"Size: S, M, L\nColour: Red, Blue"} />
           </Field>
-          <Field label="Stock — कितने items" htmlFor="piece-stock">
+          <Field label="Real quantity — pieces actually on hand" htmlFor="piece-stock">
             <input
               id="piece-stock"
               inputMode="numeric"
@@ -403,6 +413,26 @@ function Desk() {
               onChange={(event) => setDraft({ ...draft, stock: event.target.value })}
               className={inputClass}
               required
+            />
+          </Field>
+          <Field label="Show customers this many pieces (public count) — blank = show real" htmlFor="piece-public-stock">
+            <input
+              id="piece-public-stock"
+              inputMode="numeric"
+              value={draft.publicStock}
+              placeholder="e.g. 2"
+              onChange={(event) => setDraft({ ...draft, publicStock: event.target.value })}
+              className={inputClass}
+            />
+          </Field>
+          <Field label="Discount % shown on the product card — blank = automatic" htmlFor="piece-card-off">
+            <input
+              id="piece-card-off"
+              inputMode="numeric"
+              value={draft.cardOff}
+              placeholder="e.g. 25"
+              onChange={(event) => setDraft({ ...draft, cardOff: event.target.value })}
+              className={inputClass}
             />
           </Field>
         </div>
@@ -733,6 +763,8 @@ function keepExtras(product: Product) {
     saleStartsAt: product.saleStartsAt ?? "",
     saleEndsAt: product.saleEndsAt ?? "",
     variants: product.variants ?? "",
+    publicStock: product.publicStock,
+    cardOffPct: product.cardOffPct,
   };
 }
 
@@ -753,7 +785,7 @@ function SiteEditor() {
   const [message, setMessage] = useState("");
   const rows = [
     { slug: "home", label: "Home" },
-    ...CATEGORIES.map((category) => ({ slug: category.id, label: category.label })),
+    ...useCategories().map((category) => ({ slug: category.id, label: category.label })),
   ];
 
   async function save(slug: string, title: string, note: string) {
@@ -1262,8 +1294,8 @@ function HomeSectionsSettings() {
       </p>
       <ul className="mt-3 space-y-3">
         {value.map((row, i) => {
-          const category = CATEGORIES.find((item) => item.id === row.id)!;
-          const inMenu = nav.length === 0 || nav.includes(row.id);
+          const category = categoryOf(row.id);
+          const inMenu = true;
           return (
             <li
               key={row.id}
@@ -1372,28 +1404,9 @@ function StorefrontSettings() {
   return (
     <section className="mt-10">
       <h2 className="font-display text-3xl">Storefront</h2>
-      <p className="mt-1 text-sm text-mist">Home is always in the top menu. Tick the categories to show next to it.</p>
-      <div className="mt-3 grid grid-cols-2 gap-1 sm:grid-cols-3">
-        {CATEGORIES.map((category) => (
-          <label key={category.id} className="flex h-10 items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              className="size-4 accent-clay"
-              checked={navValue.includes(category.id)}
-              onChange={(event) =>
-                setNav(
-                  event.target.checked
-                    ? CATEGORIES.map((c) => c.id).filter((id) => id === category.id || navValue.includes(id))
-                    : navValue.filter((id) => id !== category.id),
-                )
-              }
-            />
-            {category.label}
-          </label>
-        ))}
-      </div>
+      <p className="mt-1 text-sm text-mist">The top menu lists every category that has pieces. Add a category by typing it on a piece.</p>
       <PhotoListEditor
-        title="Home slider photos (up to 4, in order). Empty = default photos."
+        title="Home slider photos (up to 4, in order). Empty = no slider."
         photos={slidesValue}
         max={4}
         onChange={setSlides}

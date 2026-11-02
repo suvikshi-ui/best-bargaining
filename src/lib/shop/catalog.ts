@@ -1,33 +1,31 @@
 import { z } from "zod";
 
-export const CATEGORIES = [
-  { id: "gadgets", label: "Gadgets", hindi: "", note: "Watches, chargers, cables, and small electronics." },
-  { id: "kitchen-essentials", label: "Kitchen", hindi: "", note: "Cooking tools, gadgets, and storage." },
-  { id: "mobile-accessories", label: "Mobile", hindi: "", note: "Cases, stands, grips, and chargers." },
-  { id: "womens-fashion", label: "Fashion", hindi: "", note: "Ethnic wear, dresses, and everyday clothes." },
-  { id: "mens-grooming", label: "Grooming", hindi: "", note: "Trimmers, kits, and shaving." },
-  { id: "beauty", label: "Beauty", hindi: "", note: "Skin tools, hair, and self-care." },
-  { id: "accessories", label: "Accessories", hindi: "", note: "Belts, caps, shades, and everyday carry." },
-  { id: "jewellery", label: "Jewellery", hindi: "", note: "Chains, rings, and everyday gold-tone pieces." },
-  { id: "kids-products", label: "Kids", hindi: "", note: "Care, feeding, and toys." },
-  { id: "led-lights-2", label: "LED Lights", hindi: "", note: "Strips, lamps, and wall light." },
-  { id: "car-bike", label: "Car & Bike", hindi: "", note: "Holders, lights, and organisers for the ride." },
-  { id: "fitness", label: "Fitness", hindi: "", note: "Bands, bags, and home workout tools." },
-  { id: "wellness-essentials", label: "Wellness", hindi: "", note: "Sleep, posture, and massage." },
-  { id: "work-from-home", label: "Work From Home", hindi: "", note: "Stands, light, and desk order." },
-  { id: "diy-tools", label: "DIY Tools", hindi: "", note: "Hooks, kits, and repair tools." },
-  { id: "gaming", label: "Gaming", hindi: "", note: "Mouse, pads, and headset gear." },
-  { id: "travel", label: "Travel", hindi: "", note: "Bags, bottles, and neck pillows." },
-  { id: "gifts", label: "Gifts", hindi: "", note: "Pens, notebooks, and festival sets." },
-  { id: "eco-friendly", label: "Eco-Friendly", hindi: "", note: "Bamboo, cloth bags, and reusable pieces." },
-  { id: "pet-care", label: "Pet Care", hindi: "", note: "Bowls, clothes, and toys." },
-  { id: "fabric", label: "Fabric", hindi: "", note: "Cotton, silk, rayon, and polyester." },
-  { id: "sewing-machine", label: "Sewing", hindi: "", note: "Domestic and industrial machines." },
-  { id: "cooked-foods", label: "Cooked Food", hindi: "", note: "Veg and non-veg meals, packed to order." },
-] as const;
+export type Category = { id: string; label: string; hindi: string; note: string };
+/** No seeded categories: the owner creates a category by typing it when adding a piece. */
+export const CATEGORIES: readonly Category[] = [];
 
-export type CategoryId = (typeof CATEGORIES)[number]["id"];
-export type ShopCat = CategoryId | "all";
+export type CategoryId = string;
+export type ShopCat = string;
+
+export function slugifyCategory(value: string): string {
+  return value.toLowerCase().trim().replace(/&/g, " and ").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
+}
+
+function prettyCategory(id: string): string {
+  return id.split("-").filter(Boolean).map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+}
+
+/** Distinct categories in use, in first-seen order. */
+export function categoriesFrom(items: { category: string }[]): Category[] {
+  const seen = new Set<string>();
+  const out: Category[] = [];
+  for (const item of items) {
+    if (!item.category || seen.has(item.category)) continue;
+    seen.add(item.category);
+    out.push(categoryOf(item.category));
+  }
+  return out;
+}
 
 export const PHOTOS = [
   { src: "/products/earbuds.jpg", label: "Earbuds" },
@@ -102,6 +100,12 @@ export type Product = {
   badge: Badge;
   published: boolean;
   compareAt: number;
+  /** Real pieces on hand are `stock`; customers see `shownStock` (owner's public count, never above real). */
+  shownStock: number;
+  /** Owner's raw public-count setting (null = show real). Studio only. */
+  publicStock: number | null;
+  /** Owner-set % shown on the card badge (0 = automatic from regular price). */
+  cardOffPct: number;
   /** Owner's regular price (price may be a live sale price). Studio only edits this. */
   basePrice?: number;
   salePrice?: number;
@@ -251,9 +255,7 @@ const productPhotoSchema = z
   .refine(isPhotoValue, "Add a photo (upload, or an https:// link).");
 
 export const shopSettingsSchema = z.object({
-  navCategories: z.array(z.string()).max(40).transform((ids) =>
-    ids.filter((id) => CATEGORIES.some((item) => item.id === id)),
-  ),
+  navCategories: z.array(z.string()).max(40),
   heroSlides: z.array(photoSchema).max(4, "Up to 4 slider photos."),
 });
 
@@ -278,7 +280,7 @@ export const homeSectionsSchema = z
   .transform((rows) => resolveHomeSections(rows));
 
 /** Saved order first (known categories only, no duplicates), then any category not saved yet with defaults. */
-export function resolveHomeSections(saved: unknown): HomeSection[] {
+export function resolveHomeSections(saved: unknown, ids: string[] = []): HomeSection[] {
   const raw = typeof saved === "string" ? safeParse(saved) : saved;
   const list = Array.isArray(raw) ? raw : [];
   const out: HomeSection[] = [];
@@ -287,7 +289,7 @@ export function resolveHomeSections(saved: unknown): HomeSection[] {
     if (!item || typeof item !== "object") continue;
     const row = item as Record<string, unknown>;
     const id = String(row.id ?? "");
-    if (seen.has(id) || !CATEGORIES.some((c) => c.id === id)) continue;
+    if (!id || seen.has(id) || (ids.length > 0 && !ids.includes(id))) continue;
     seen.add(id);
     const text = (v: unknown, max: number) => (typeof v === "string" ? v.trim().slice(0, max) : "");
     out.push({
@@ -298,7 +300,7 @@ export function resolveHomeSections(saved: unknown): HomeSection[] {
       dealText: text(row.dealText, 60),
     });
   }
-  for (const c of CATEGORIES) if (!seen.has(c.id)) out.push({ id: c.id, show: true, title: "", note: "", dealText: "" });
+  for (const id of ids) if (!seen.has(id)) out.push({ id, show: true, title: "", note: "", dealText: "" });
   return out;
 }
 
@@ -312,8 +314,8 @@ export function dealLine(template: string, off: number): string {
  * Categories the owner left out of the top menu are hidden everywhere on the homepage.
  * An empty menu (never set up: Home only) hides nothing, so the default homepage is unchanged.
  */
-export function categoryOnHome(id: string, navCategories: string[]): boolean {
-  return navCategories.length === 0 || navCategories.includes(id);
+export function categoryOnHome(_id: string, _navCategories: string[]): boolean {
+  return true;
 }
 
 export function parseJsonList(value: unknown): string[] {
@@ -324,9 +326,11 @@ export function parseJsonList(value: unknown): string[] {
 export const productWriteSchema = z.object({
   id: z.number().int().positive().optional(),
   name: z.string().trim().min(1, "Name the piece.").max(80, "Keep the name shorter."),
-  category: z.string().refine((value): value is CategoryId => CATEGORIES.some((item) => item.id === value), "Pick a department."),
+  category: z.string().trim().min(1, "Type a category.").max(40, "Keep the category under 40 characters.").transform((v) => slugifyCategory(v)).refine((v) => v.length > 0, "Type a category."),
   price: z.number().int().min(1, "Add a price in rupees.").max(5_000_000),
   stock: z.number().int().min(0, "Stock cannot be negative.").max(100_000),
+  publicStock: z.number().int().min(1, "Public count must be at least 1 (leave blank to show the real count).").max(100_000).nullable().default(null),
+  cardOffPct: z.number().int().min(0, "Discount % cannot be negative.").max(95, "Discount % can be at most 95.").default(0),
   blurb: z.string().trim().max(400, "Keep the note under 400 characters."),
   image: z
     .string()
@@ -359,20 +363,23 @@ export function readQuery(value: unknown) {
   return value.trim().slice(0, 60);
 }
 
+/** % on the card badge: owner's number wins, otherwise worked out from the regular price. */
+export function cardOff(product: { price: number; compareAt: number; cardOffPct?: number }) {
+  return product.cardOffPct && product.cardOffPct > 0 ? product.cardOffPct : offPercent(product.price, product.compareAt);
+}
+
 export function offPercent(price: number, compareAt: number) {
   if (!compareAt || compareAt <= price) return 0;
   return Math.round((1 - price / compareAt) * 100);
 }
 
 export function readCat(value: unknown): ShopCat {
-  if (typeof value === "string" && CATEGORIES.some((item) => item.id === value)) {
-    return value as CategoryId;
-  }
+  if (typeof value === "string" && /^[a-z0-9-]{1,40}$/.test(value)) return value;
   return "all";
 }
 
 export function categoryOf(id: string) {
-  return CATEGORIES.find((category) => category.id === id) ?? CATEGORIES[2];
+  return { id, label: prettyCategory(id) || id, hindi: "", note: "" };
 }
 
 const money = new Intl.NumberFormat("en-IN", {
@@ -388,6 +395,8 @@ export function inr(value: number) {
 export function asProduct(
   row: Product & {
     compare_at?: number | null;
+    public_stock?: number | null;
+    card_off_pct?: number | null;
     show_description?: boolean | null;
     sale_price?: number | null;
     sale_starts_at?: string | null;
@@ -398,8 +407,7 @@ export function asProduct(
   const base = Number(row.price);
   const live = saleIsLive({ price: base, sale_price: row.sale_price, sale_starts_at: row.sale_starts_at, sale_ends_at: row.sale_ends_at });
   const mrp = Math.max(0, Number(row.compareAt || row.compare_at || 0));
-  const known = CATEGORIES.some((item) => item.id === row.category);
-  const category = known ? (row.category as CategoryId) : CATEGORIES[0].id;
+  const category = String(row.category || "general");
   return {
     id: Number(row.id),
     name: row.name,
@@ -412,6 +420,10 @@ export function asProduct(
     saleActive: live,
     variants: row.variants ?? "",
     stock: Number(row.stock),
+    publicStock: row.public_stock == null ? null : Number(row.public_stock),
+    shownStock:
+      Number(row.stock) <= 0 ? 0 : row.public_stock == null ? Number(row.stock) : Math.max(1, Math.min(Number(row.public_stock), Number(row.stock))),
+    cardOffPct: Math.max(0, Math.min(95, Number(row.card_off_pct ?? 0))),
     blurb: row.blurb ?? "",
     image: row.image,
     badge,
