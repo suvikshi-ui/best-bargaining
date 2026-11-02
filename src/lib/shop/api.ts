@@ -22,6 +22,9 @@ import {
   homeSectionsSchema,
   shopSettingsSchema,
   normalizeWhatsApp,
+  saleIsLive,
+  ORDER_STATUSES,
+  type OrderStatus,
   CATEGORIES as ALL_CATEGORIES,
 } from "@/lib/shop/catalog";
 import {
@@ -91,9 +94,9 @@ async function ensureOwner(userId: string): Promise<"owner" | "locked"> {
 export const listProducts = createServerFn({ method: "GET" }).handler(async () => {
   const sql = await getSql();
   const rows = await sql<Product>`
-    select id, name, category, price, compare_at, stock, blurb, image, badge, published
+    select id, name, category, price, compare_at, sale_price, sale_starts_at::text as sale_starts_at, sale_ends_at::text as sale_ends_at, variants, stock, blurb, image, badge, published
     from products
-    where published = true
+    where published = true and archived = false
     order by category, id asc
   `;
   return rows.map(asProduct);
@@ -109,9 +112,9 @@ export const getProduct = createServerFn({ method: "GET" })
     if (id < 1) return null;
     const sql = await getSql();
     const rows = await sql<Product>`
-      select id, name, category, price, compare_at, stock, blurb, image, badge, published, images, description, show_description
+      select id, name, category, price, compare_at, sale_price, sale_starts_at::text as sale_starts_at, sale_ends_at::text as sale_ends_at, variants, stock, blurb, image, badge, published, images, description, show_description
       from products
-      where id = ${id} and published = true
+      where id = ${id} and archived = false and published = true
     `;
     return rows[0] ? asProduct(rows[0]) : null;
   });
@@ -158,14 +161,14 @@ export const getStudio = createServerFn({ method: "GET" })
   .handler(async ({ context }) => {
     const role = await ensureOwner(context.userId);
     if (role !== "owner") {
-      return { role: "locked" as const, products: [] as Product[], orders: [] as ShopOrder[], customers: [] as ShopCustomer[] };
+      return { role: "locked" as const, alerts: {} as Record<number, number>, movements: [] as StockMovement[], products: [] as Product[], orders: [] as ShopOrder[], customers: [] as ShopCustomer[] };
     }
     const sql = await getSql();
     const products = await sql<Product>`
-      select id, name, category, price, compare_at, stock, blurb, image, badge, published, images, description, show_description
+      select id, name, category, price, compare_at, sale_price, sale_starts_at::text as sale_starts_at, sale_ends_at::text as sale_ends_at, variants, stock, blurb, image, badge, published, images, description, show_description, archived
       from products
       where user_id = ${context.userId}
-      order by id desc
+      order by archived asc, id desc
     `;
     const orders = await sql<{
       id: number;
@@ -180,10 +183,11 @@ export const getStudio = createServerFn({ method: "GET" })
       referral_code: string | null;
       discount_amount: number | null;
       discount_label: string | null;
+      status: string | null;
     }>`
       select id, items, total, created_at::text as created_at,
         customer_name, customer_phone, customer_email, account_email, user_id,
-        referral_code, discount_amount, discount_label
+        referral_code, discount_amount, discount_label, status
       from orders
       order by id desc
       limit 80
@@ -227,6 +231,7 @@ export const getStudio = createServerFn({ method: "GET" })
       referralCode: order.referral_code ?? "",
       discountAmount: Number(order.discount_amount ?? 0),
       discountLabel: order.discount_label ?? "",
+      status: ((ORDER_STATUSES as readonly string[]).includes(order.status ?? "") ? order.status : "placed") as OrderStatus,
     }));
     const byUser = new Map<string, ShopCustomer>();
     for (const profile of profiles) {
@@ -267,8 +272,24 @@ export const getStudio = createServerFn({ method: "GET" })
         price: Number(line.price),
       });
     }
+    const alertRows = await sql<{ product_id: number; waiting: number }>`
+      select product_id, count(*)::int as waiting from stock_alerts
+      where notified_at is null group by product_id
+    `;
+    const movementRows = await sql<{
+      id: number; product_id: number; delta: number; stock_after: number; reason: string; order_id: number | null; created_at: string; name: string | null;
+    }>`
+      select m.id, m.product_id, m.delta, m.stock_after, m.reason, m.order_id, m.created_at::text as created_at, p.name
+      from stock_movements m left join products p on p.id = m.product_id
+      order by m.id desc limit 40
+    `;
     return {
       role: "owner" as const,
+      alerts: Object.fromEntries(alertRows.map((r) => [Number(r.product_id), Number(r.waiting)])) as Record<number, number>,
+      movements: movementRows.map((r) => ({
+        id: Number(r.id), productId: Number(r.product_id), name: r.name ?? "(removed)", delta: Number(r.delta),
+        stockAfter: Number(r.stock_after), reason: r.reason, orderId: r.order_id == null ? null : Number(r.order_id), createdAt: r.created_at,
+      })),
       products: products.map(asProduct),
       orders: mappedOrders,
       customers: [...byUser.values()],
@@ -289,6 +310,7 @@ export const saveProduct = createServerFn({ method: "POST" })
     if (role !== "owner") throw new Error("Only the shop owner can change the shelf.");
     const sql = await getSql();
     if (data.id) {
+      const before = await sql<{ stock: number }>`select stock from products where id = ${data.id} and user_id = ${context.userId}`;
       const rows = await sql<{ id: number }>`
         update products set
           name = ${data.name},
@@ -302,15 +324,21 @@ export const saveProduct = createServerFn({ method: "POST" })
           compare_at = ${data.compareAt > 0 ? data.compareAt : null},
           images = ${JSON.stringify(data.images)},
           description = ${data.description},
-          show_description = ${data.showDescription}
+          show_description = ${data.showDescription},
+          sale_price = ${data.salePrice > 0 ? data.salePrice : null},
+          sale_starts_at = ${data.saleStartsAt || null},
+          sale_ends_at = ${data.saleEndsAt || null},
+          variants = ${data.variants}
         where id = ${data.id} and user_id = ${context.userId}
         returning id
       `;
       if (!rows.length) throw new Error("That piece is not in your shop.");
+      const prev = Number(before[0]?.stock ?? data.stock);
+      if (prev !== data.stock) await logMovement(data.id, data.stock - prev, data.stock, prev === 0 ? "restock" : "owner_edit", null);
       return { id: Number(rows[0].id) };
     }
     const rows = await sql<{ id: number }>`
-      insert into products (user_id, name, category, price, compare_at, stock, blurb, image, badge, published, images, description, show_description)
+      insert into products (user_id, name, category, price, compare_at, sale_price, sale_starts_at::text as sale_starts_at, sale_ends_at::text as sale_ends_at, variants, stock, blurb, image, badge, published, images, description, show_description)
       values (
         ${context.userId},
         ${data.name},
@@ -324,10 +352,15 @@ export const saveProduct = createServerFn({ method: "POST" })
         ${data.published},
         ${JSON.stringify(data.images)},
         ${data.description},
-        ${data.showDescription}
+        ${data.showDescription},
+        ${data.salePrice > 0 ? data.salePrice : null},
+        ${data.saleStartsAt || null},
+        ${data.saleEndsAt || null},
+        ${data.variants}
       )
       returning id
     `;
+    if (data.stock > 0) await logMovement(Number(rows[0].id), data.stock, data.stock, "restock", null);
     return { id: Number(rows[0].id) };
   });
 
@@ -342,7 +375,83 @@ export const deleteProduct = createServerFn({ method: "POST" })
     const role = await ensureOwner(context.userId);
     if (role !== "owner") throw new Error("Only the shop owner can change the shelf.");
     const sql = await getSql();
-    await sql`delete from products where id = ${id} and user_id = ${context.userId}`;
+    // Archive, never hard-delete: past orders and the stock ledger keep pointing at it.
+    await sql`update products set archived = true, published = false where id = ${id} and user_id = ${context.userId}`;
+    await sql`delete from bags where product_id = ${id}`;
+    return { ok: true as const };
+  });
+
+export const restoreProduct = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((id: unknown) => {
+    const parsed = Number(id);
+    if (!Number.isInteger(parsed) || parsed < 1) throw new Error("Missing piece.");
+    return parsed;
+  })
+  .handler(async ({ context, data: id }) => {
+    const role = await ensureOwner(context.userId);
+    if (role !== "owner") throw new Error("Only the shop owner can change the shelf.");
+    const sql = await getSql();
+    await sql`update products set archived = false where id = ${id} and user_id = ${context.userId}`;
+    return { ok: true as const };
+  });
+
+export type StockMovement = {
+  id: number; productId: number; name: string; delta: number; stockAfter: number;
+  reason: string; orderId: number | null; createdAt: string;
+};
+
+async function logMovement(productId: number, delta: number, stockAfter: number, reason: string, orderId: number | null) {
+  try {
+    const sql = await getSql();
+    await sql`insert into stock_movements (product_id, delta, stock_after, reason, order_id)
+      values (${productId}, ${delta}, ${stockAfter}, ${reason}, ${orderId})`;
+  } catch {
+    // The ledger must never block a sale or an edit.
+  }
+}
+
+/** Customer: "Notify me when back in stock" for a sold-out piece. */
+export const requestStockAlert = createServerFn({ method: "POST" })
+  .validator((raw: unknown) => {
+    const body = (raw ?? {}) as { productId?: unknown; email?: unknown };
+    const productId = Number(body.productId);
+    const email = z.string().trim().toLowerCase().email("Enter a valid email.").max(120).safeParse(body.email);
+    if (!Number.isInteger(productId) || productId < 1) throw new Error("Missing piece.");
+    if (!email.success) throw new Error(email.error.issues[0]?.message ?? "Enter a valid email.");
+    return { productId, email: email.data };
+  })
+  .handler(async ({ data }) => {
+    const sql = await getSql();
+    const rows = await sql<{ id: number }>`select id from products where id = ${data.productId} and archived = false`;
+    if (!rows.length) throw new Error("That piece is not in the shop.");
+    await sql`insert into stock_alerts (product_id, email) values (${data.productId}, ${data.email})
+      on conflict (product_id, email) do update set notified_at = null, created_at = now()`;
+    return { ok: true as const };
+  });
+
+/** Owner: list who is waiting for a piece, and mark them as told. */
+export const getStockAlerts = createServerFn({ method: "GET" })
+  .middleware([authMiddleware])
+  .validator((id: unknown) => Number(id) || 0)
+  .handler(async ({ context, data: id }) => {
+    const role = await ensureOwner(context.userId);
+    if (role !== "owner") throw new Error("Only the shop owner can see this.");
+    const sql = await getSql();
+    const rows = await sql<{ email: string; created_at: string }>`
+      select email, created_at::text as created_at from stock_alerts
+      where product_id = ${id} and notified_at is null order by id asc`;
+    return rows.map((r) => ({ email: r.email, createdAt: r.created_at }));
+  });
+
+export const markStockAlertsNotified = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((id: unknown) => Number(id) || 0)
+  .handler(async ({ context, data: id }) => {
+    const role = await ensureOwner(context.userId);
+    if (role !== "owner") throw new Error("Only the shop owner can do this.");
+    const sql = await getSql();
+    await sql`update stock_alerts set notified_at = now() where product_id = ${id} and notified_at is null`;
     return { ok: true as const };
   });
 
@@ -390,9 +499,9 @@ export const placeOrder = createServerFn({ method: "POST" })
     const sql = await getSql();
     const picked: { id: number; name: string; price: number; qty: number; category: string }[] = [];
     for (const line of lines) {
-      const rows = await sql<{ id: number; name: string; price: number; stock: number; category: string }>`
-        select id, name, price, stock, category from products
-        where id = ${line.id} and published = true
+      const rows = await sql<{ id: number; name: string; price: number; stock: number; category: string; sale_price: number | null; sale_starts_at: string | null; sale_ends_at: string | null }>`
+        select id, name, price, stock, category, sale_price, sale_starts_at::text as sale_starts_at, sale_ends_at::text as sale_ends_at from products
+        where id = ${line.id} and published = true and archived = false
       `;
       const product = rows[0];
       if (!product) throw new Error("Something in the bag is no longer for sale.");
@@ -402,7 +511,7 @@ export const placeOrder = createServerFn({ method: "POST" })
       picked.push({
         id: Number(product.id),
         name: product.name,
-        price: Number(product.price),
+        price: saleIsLive(product) ? Number(product.sale_price) : Number(product.price),
         qty: line.qty,
         category: product.category,
       });
@@ -415,7 +524,7 @@ export const placeOrder = createServerFn({ method: "POST" })
         const rows = await sql<{ id: number }>`
           update products set stock = stock - ${line.qty}
           where id = ${line.id} and stock >= ${line.qty}
-          returning id
+          returning id, stock
         `;
         if (!rows.length) throw new Error(`${line.name} just sold out.`);
         held.push(line);
@@ -446,6 +555,10 @@ export const placeOrder = createServerFn({ method: "POST" })
         )
         returning id
       `;
+      for (const line of picked) {
+        const now = await sql<{ stock: number }>`select stock from products where id = ${line.id}`;
+        await logMovement(line.id, -line.qty, Number(now[0]?.stock ?? 0), "order", Number(inserted[0].id));
+      }
       return {
         id: Number(inserted[0].id),
         total,
@@ -563,7 +676,7 @@ export const saveBag = createServerFn({ method: "POST" })
     await sql`delete from bags where user_id = ${context.userId}`;
     for (const line of data.lines) {
       const found = await sql<{ id: number }>`
-        select id from products where id = ${line.id} and published = true
+        select id from products where id = ${line.id} and published = true and archived = false
       `;
       if (!found.length) continue;
       await sql`
@@ -859,10 +972,12 @@ export const quoteBag = createServerFn({ method: "POST" })
     const sql = await getSql();
     const priced: { price: number; qty: number; category: string }[] = [];
     for (const line of data.lines) {
-      const rows = await sql<{ price: number; category: string }>`
-        select price, category from products where id = ${line.id} and published = true
+      const rows = await sql<{ price: number; category: string; sale_price: number | null; sale_starts_at: string | null; sale_ends_at: string | null }>`
+        select price, category, sale_price, sale_starts_at::text as sale_starts_at, sale_ends_at::text as sale_ends_at
+        from products where id = ${line.id} and published = true and archived = false
       `;
-      if (rows[0]) priced.push({ price: Number(rows[0].price), qty: line.qty, category: rows[0].category });
+      const row = rows[0];
+      if (row) priced.push({ price: saleIsLive(row) ? Number(row.sale_price) : Number(row.price), qty: line.qty, category: row.category });
     }
     const result = await quoteFor(priced, data.code, data.phone, data.email);
     return {
@@ -990,5 +1105,37 @@ export const saveStackSetting = createServerFn({ method: "POST" })
     await requireOwner(context.userId);
     const sql = await getSql();
     await sql`update shop set stack_referral = ${data} where id = 1`;
+    return { ok: true as const };
+  });
+
+/** Owner: move an order along. Cancelling puts its items back on the shelf once. */
+export const setOrderStatus = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((raw: unknown) => {
+    const body = (raw ?? {}) as { id?: unknown; status?: unknown };
+    const id = Number(body.id);
+    const status = String(body.status ?? "") as OrderStatus;
+    if (!Number.isInteger(id) || id < 1) throw new Error("Missing order.");
+    if (!(ORDER_STATUSES as readonly string[]).includes(status)) throw new Error("Unknown status.");
+    return { id, status };
+  })
+  .handler(async ({ context, data }) => {
+    const role = await ensureOwner(context.userId);
+    if (role !== "owner") throw new Error("Only the shop owner can change orders.");
+    const sql = await getSql();
+    const rows = await sql<{ status: string; items: string }>`select status, items from orders where id = ${data.id}`;
+    const order = rows[0];
+    if (!order) throw new Error("Order not found.");
+    if (order.status === "cancelled" && data.status !== "cancelled") {
+      throw new Error("A cancelled order stays cancelled. Place a new one instead.");
+    }
+    await sql`update orders set status = ${data.status} where id = ${data.id}`;
+    if (data.status === "cancelled" && order.status !== "cancelled") {
+      for (const item of asItems(order.items)) {
+        const back = await sql<{ stock: number }>`
+          update products set stock = stock + ${item.qty} where id = ${item.id} returning stock`;
+        if (back[0]) await logMovement(item.id, item.qty, Number(back[0].stock), "order_rollback", data.id);
+      }
+    }
     return { ok: true as const };
   });

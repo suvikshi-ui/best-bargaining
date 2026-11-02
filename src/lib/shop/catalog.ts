@@ -60,6 +60,37 @@ export const HERO = "/products/hero.jpg";
 
 const PHOTO_SRC: readonly string[] = PHOTOS.map((photo) => photo.src);
 
+export const BADGES = [
+  { id: "", label: "None" },
+  { id: "new", label: "New" },
+  { id: "best", label: "Bestseller" },
+  { id: "fast", label: "Fast selling" },
+  { id: "limited", label: "Limited stock" },
+] as const;
+export type Badge = "" | "new" | "best" | "fast" | "limited";
+export const ORDER_STATUSES = ["placed", "confirmed", "shipped", "delivered", "cancelled"] as const;
+export type OrderStatus = (typeof ORDER_STATUSES)[number];
+
+/** Sale price applies when set, below the regular price, and inside its dates. */
+export function saleIsLive(row: { price: number; sale_price?: number | null; sale_starts_at?: string | null; sale_ends_at?: string | null }, now = Date.now()) {
+  const sale = Number(row.sale_price ?? 0);
+  if (!(sale > 0 && sale < Number(row.price))) return false;
+  if (row.sale_starts_at && Date.parse(row.sale_starts_at) > now) return false;
+  if (row.sale_ends_at && Date.parse(row.sale_ends_at) < now) return false;
+  return true;
+}
+
+export function parseVariants(text: string | undefined) {
+  return (text ?? "")
+    .split("\n")
+    .map((line) => {
+      const [label, rest] = line.split(":");
+      const options = (rest ?? "").split(",").map((o) => o.trim()).filter(Boolean);
+      return { label: (label ?? "").trim(), options };
+    })
+    .filter((group) => group.label && group.options.length);
+}
+
 export type Product = {
   id: number;
   name: string;
@@ -68,13 +99,22 @@ export type Product = {
   stock: number;
   blurb: string;
   image: string;
-  badge: "" | "new" | "best";
+  badge: Badge;
   published: boolean;
   compareAt: number;
+  /** Owner's regular price (price may be a live sale price). Studio only edits this. */
+  basePrice?: number;
+  salePrice?: number;
+  saleStartsAt?: string;
+  saleEndsAt?: string;
+  saleActive?: boolean;
+  /** One option group per line, e.g. "Size: S, M, L". */
+  variants?: string;
   /** Extra photos after `image` (max 3). Only loaded on product page and studio. */
   images?: string[];
   description?: string;
   showDescription?: boolean;
+  archived?: boolean;
 };
 
 export type OrderItem = {
@@ -97,6 +137,7 @@ export type ShopOrder = {
   referralCode?: string;
   discountAmount?: number;
   discountLabel?: string;
+  status?: OrderStatus;
 };
 
 export type ReferralAgent = {
@@ -299,7 +340,11 @@ export const productWriteSchema = z.object({
         value.startsWith("data:image/webp"),
       "Add Photo 1 (the main photo).",
     ),
-  badge: z.enum(["", "new", "best"]),
+  badge: z.enum(["", "new", "best", "fast", "limited"]),
+  salePrice: z.number().int().min(0).max(5_000_000).default(0),
+  saleStartsAt: z.string().max(40).default(""),
+  saleEndsAt: z.string().max(40).default(""),
+  variants: z.string().max(400, "Keep variants under 400 characters.").default(""),
   published: z.boolean(),
   compareAt: z.number().int().min(0).max(5_000_000),
   images: z.array(productPhotoSchema).max(3, "Up to 3 extra photos (Photos 2-4).").default([]),
@@ -341,25 +386,41 @@ export function inr(value: number) {
 }
 
 export function asProduct(
-  row: Product & { compare_at?: number | null; show_description?: boolean | null },
+  row: Product & {
+    compare_at?: number | null;
+    show_description?: boolean | null;
+    sale_price?: number | null;
+    sale_starts_at?: string | null;
+    sale_ends_at?: string | null;
+  },
 ): Product {
-  const badge = row.badge === "new" || row.badge === "best" ? row.badge : "";
+  const badge: Badge = (["new", "best", "fast", "limited"] as const).includes(row.badge as never) ? (row.badge as Badge) : "";
+  const base = Number(row.price);
+  const live = saleIsLive({ price: base, sale_price: row.sale_price, sale_starts_at: row.sale_starts_at, sale_ends_at: row.sale_ends_at });
+  const mrp = Math.max(0, Number(row.compareAt || row.compare_at || 0));
   const known = CATEGORIES.some((item) => item.id === row.category);
   const category = known ? (row.category as CategoryId) : CATEGORIES[0].id;
   return {
     id: Number(row.id),
     name: row.name,
     category,
-    price: Number(row.price),
+    price: live ? Number(row.sale_price) : base,
+    basePrice: base,
+    salePrice: Number(row.sale_price ?? 0),
+    saleStartsAt: row.sale_starts_at ?? "",
+    saleEndsAt: row.sale_ends_at ?? "",
+    saleActive: live,
+    variants: row.variants ?? "",
     stock: Number(row.stock),
     blurb: row.blurb ?? "",
     image: row.image,
     badge,
     published: Boolean(row.published),
-    compareAt: Math.max(0, Number(row.compareAt || row.compare_at || 0)),
+    compareAt: live ? Math.max(mrp, base) : mrp,
     ...("images" in row ? { images: parseJsonList(row.images).slice(0, 3) } : {}),
     ...("description" in row ? { description: row.description ?? "" } : {}),
     ...("show_description" in row ? { showDescription: row.show_description !== false } : {}),
+    ...("archived" in row ? { archived: Boolean((row as { archived?: boolean }).archived) } : {}),
   };
 }
 

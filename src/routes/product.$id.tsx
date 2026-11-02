@@ -4,8 +4,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { StockLine } from "@/components/shop/product-card";
 import { ShopShell } from "@/components/shop/shell";
 import { useCart } from "@/lib/shop/cart";
-import { getProduct } from "@/lib/shop/api";
-import { categoryOf, inr, offPercent } from "@/lib/shop/catalog";
+import { getProduct, requestStockAlert } from "@/lib/shop/api";
+import { categoryOf, inr, offPercent, parseVariants } from "@/lib/shop/catalog";
 
 export const Route = createFileRoute("/product/$id")({
   loader: ({ params }) => getProduct({ data: Number(params.id) }),
@@ -72,7 +72,14 @@ function Piece() {
           </div>
           <div className="mt-2">
             <StockLine stock={product.stock} />
+            {product.saleActive && product.saleEndsAt ? (
+              <p className="mt-1 text-xs text-mist">
+                Sale ends {new Date(product.saleEndsAt).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
+              </p>
+            ) : null}
           </div>
+          <Variants text={product.variants} />
+          {gone && <NotifyMe productId={product.id} />}
           {!gone && (
             <div className="mt-6 flex items-center gap-3">
               <button
@@ -317,5 +324,60 @@ function ProductGallery({ photos, name }: { photos: string[]; name: string }) {
         </div>
       ) : null}
     </div>
+  );
+}
+
+function Variants({ text }: { text?: string }) {
+  const groups = parseVariants(text);
+  const [picked, setPicked] = useState<Record<string, string>>({});
+  if (groups.length === 0) return null;
+  return (
+    <div className="mt-5 space-y-3">
+      {groups.map((group) => (
+        <div key={group.label}>
+          <p className="text-sm font-medium">
+            {group.label}
+            {picked[group.label] ? <span className="font-normal text-mist"> · {picked[group.label]}</span> : null}
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {group.options.map((option) => (
+              <button key={option} type="button" aria-pressed={picked[group.label] === option}
+                onClick={() => setPicked({ ...picked, [group.label]: option })}
+                className={`h-10 min-w-10 rounded-full border px-4 text-sm ${picked[group.label] === option ? "border-ink bg-ink text-paper" : "border-ink/15"}`}>
+                {option}
+              </button>
+            ))}
+          </div>
+        </div>
+      ))}
+      <p className="text-xs text-mist">Tell us your pick in the order note or on WhatsApp after checkout.</p>
+    </div>
+  );
+}
+
+function NotifyMe({ productId }: { productId: number }) {
+  const [email, setEmail] = useState("");
+  const [state, setState] = useState<"idle" | "sending" | "done">("idle");
+  const [error, setError] = useState("");
+  if (state === "done")
+    return <p className="mt-5 rounded-2xl bg-emerald-50 p-3 text-sm text-emerald-800">Done — we'll email you when it's back in stock.</p>;
+  return (
+    <form className="mt-5 max-w-md" onSubmit={(event) => {
+      event.preventDefault();
+      setState("sending"); setError("");
+      void requestStockAlert({ data: { productId, email } })
+        .then(() => setState("done"))
+        .catch((err: unknown) => { setState("idle"); setError(err instanceof Error ? err.message : "Try again."); });
+    }}>
+      <label htmlFor="notify-email" className="text-sm font-medium">Notify me when it's back</label>
+      <div className="mt-2 flex gap-2">
+        <input id="notify-email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
+          placeholder="you@email.com" className="h-11 min-w-0 flex-1 rounded-full border border-ink/15 bg-paper px-4 text-sm" />
+        <button type="submit" disabled={state === "sending"} className="h-11 rounded-full bg-ink px-5 text-sm font-medium text-paper disabled:opacity-50">
+          {state === "sending" ? "…" : "Notify me"}
+        </button>
+      </div>
+      {error && <p className="mt-1 text-xs text-clay">{error}</p>}
+    </form>
   );
 }

@@ -10,6 +10,10 @@ import { UserButton } from "@/lib/auth/gates";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import {
   deleteProduct,
+  restoreProduct,
+  getStockAlerts,
+  markStockAlertsNotified,
+  setOrderStatus,
   getPages,
   getShopSettings,
   getStudio,
@@ -35,6 +39,10 @@ import {
   type ProductWrite,
   DEFAULT_DEAL_TEXT,
   type HomeSection,
+  BADGES,
+  ORDER_STATUSES,
+  type Badge,
+  type OrderStatus,
 } from "@/lib/shop/catalog";
 
 export const Route = createFileRoute("/studio")({
@@ -54,9 +62,13 @@ type Draft = {
   stock: string;
   blurb: string;
   image: string;
-  badge: "" | "new" | "best";
+  badge: Badge;
   published: boolean;
   compare: string;
+  sale: string;
+  saleStarts: string;
+  saleEnds: string;
+  variants: string;
   images: string[];
   description: string;
   showDescription: boolean;
@@ -72,6 +84,10 @@ const emptyDraft = (): Draft => ({
   badge: "",
   published: true,
   compare: "",
+  sale: "",
+  saleStarts: "",
+  saleEnds: "",
+  variants: "",
   images: [],
   description: "",
   showDescription: true,
@@ -145,7 +161,7 @@ function Desk() {
     onSuccess: async () => {
       setDraft(emptyDraft());
       setConfirmDelete(false);
-      setMessage("Removed from the shop.");
+      setMessage("Archived. Restore it any time under Archived pieces.");
       await refresh();
     },
     onError: (err: unknown) => {
@@ -177,7 +193,11 @@ function Desk() {
     );
   }
 
-  const products = studio.data.products;
+  const allProducts = studio.data.products;
+  const products = allProducts.filter((item) => !item.archived);
+  const archived = allProducts.filter((item) => item.archived);
+  const alerts = studio.data.alerts ?? {};
+  const movements = studio.data.movements ?? [];
   const departments = new Set(products.map((product) => product.category)).size;
   const low = products.filter((product) => product.published && product.stock <= 3).length;
 
@@ -188,6 +208,10 @@ function Desk() {
       price: Math.round(Number(draft.price)),
       stock: Math.round(Number(draft.stock)),
       compareAt: draft.compare.trim() === "" ? 0 : Math.round(Number(draft.compare)),
+      salePrice: draft.sale.trim() === "" ? 0 : Math.round(Number(draft.sale)),
+      saleStartsAt: draft.saleStarts ? new Date(draft.saleStarts).toISOString() : "",
+      saleEndsAt: draft.saleEnds ? new Date(draft.saleEnds).toISOString() : "",
+      variants: draft.variants,
     });
     if (!parsed.success) {
       setMessage(parsed.error.issues[0]?.message ?? "Check the details.");
@@ -204,13 +228,17 @@ function Desk() {
       id: product.id,
       name: product.name,
       category: product.category,
-      price: String(product.price),
+      price: String(product.basePrice ?? product.price),
       stock: String(product.stock),
       blurb: product.blurb,
       image: product.image,
       badge: product.badge,
       published: product.published,
-      compare: product.compareAt > 0 ? String(product.compareAt) : "",
+      compare: product.compareAt > 0 && !product.saleActive ? String(product.compareAt) : product.saleActive && product.compareAt > (product.basePrice ?? 0) ? String(product.compareAt) : "",
+      sale: product.salePrice ? String(product.salePrice) : "",
+      saleStarts: toLocalInput(product.saleStartsAt),
+      saleEnds: toLocalInput(product.saleEndsAt),
+      variants: product.variants ?? "",
       images: product.images ?? [],
       description: product.description ?? "",
       showDescription: product.showDescription ?? true,
@@ -227,7 +255,7 @@ function Desk() {
           id: product.id,
           name: product.name,
           category: product.category,
-          price: product.price,
+          price: product.basePrice ?? product.price,
           stock,
           blurb: product.blurb,
           image: product.image,
@@ -253,7 +281,7 @@ function Desk() {
           id: product.id,
           name: product.name,
           category: product.category,
-          price: product.price,
+          price: product.basePrice ?? product.price,
           stock: product.stock,
           blurb: product.blurb,
           image,
@@ -337,6 +365,36 @@ function Desk() {
               placeholder="Blank if no offer"
             />
           </Field>
+          <Field label="Sale price ₹ — optional, overrides price while live" htmlFor="piece-sale">
+            <input
+              id="piece-sale"
+              inputMode="numeric"
+              value={draft.sale}
+              onChange={(event) => setDraft({ ...draft, sale: event.target.value })}
+              className={inputClass}
+              placeholder="Blank = no sale"
+            />
+            <SalePct
+              base={Number(draft.price) || 0}
+              sale={Number(draft.sale) || 0}
+              onSale={(sale) => setDraft({ ...draft, sale: String(sale) })}
+            />
+          </Field>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Sale starts" htmlFor="piece-sale-start">
+              <input id="piece-sale-start" type="datetime-local" value={draft.saleStarts}
+                onChange={(event) => setDraft({ ...draft, saleStarts: event.target.value })} className={inputClass} />
+            </Field>
+            <Field label="Sale ends" htmlFor="piece-sale-end">
+              <input id="piece-sale-end" type="datetime-local" value={draft.saleEnds}
+                onChange={(event) => setDraft({ ...draft, saleEnds: event.target.value })} className={inputClass} />
+            </Field>
+          </div>
+          <Field label="Variants — one per line, e.g. Size: S, M, L" htmlFor="piece-variants">
+            <textarea id="piece-variants" rows={2} maxLength={400} value={draft.variants}
+              onChange={(event) => setDraft({ ...draft, variants: event.target.value })}
+              className={`${inputClass} h-auto py-2`} placeholder={"Size: S, M, L\nColour: Red, Blue"} />
+          </Field>
           <Field label="Stock — कितने items" htmlFor="piece-stock">
             <input
               id="piece-stock"
@@ -361,11 +419,7 @@ function Desk() {
           <legend className="text-sm text-mist">Mark</legend>
           <div className="mt-2 flex flex-wrap gap-2">
             {(
-              [
-                ["", "None"],
-                ["new", "New"],
-                ["best", "Best"],
-              ] as const
+              BADGES.map((item) => [item.id, item.label] as const)
             ).map(([value, label]) => (
               <button
                 key={label}
@@ -464,7 +518,7 @@ function Desk() {
               onClick={() => setConfirmDelete(true)}
               className="h-12 rounded-full px-5 text-sm text-clay"
             >
-              Remove
+              Archive
             </button>
           )}
           {draft.id && confirmDelete && (
@@ -474,7 +528,7 @@ function Desk() {
               onClick={() => remove.mutate(draft.id!)}
               className="h-12 rounded-full bg-ink px-5 text-sm text-paper disabled:opacity-40"
             >
-              {remove.isPending ? "Removing…" : "Yes, remove"}
+              {remove.isPending ? "Archiving…" : "Yes, archive (hide from shop)"}
             </button>
           )}
         </div>
@@ -501,9 +555,17 @@ function Desk() {
                 {product.stock > 0 && product.stock <= 5 && (
                   <span className="rounded-full bg-clay px-2 py-0.5 text-white">Low stock</span>
                 )}
+                {product.badge && (
+                  <span className="rounded-full border border-ink/15 px-2 py-0.5">
+                    {BADGES.find((b) => b.id === product.badge)?.label}
+                  </span>
+                )}
+                {product.saleActive && <span className="rounded-full bg-emerald-600 px-2 py-0.5 text-white">Sale live</span>}
+                {alerts[product.id] ? <WaitingChip productId={product.id} count={alerts[product.id]} onDone={refresh} /> : null}
               </p>
               <p className="text-sm text-mist">
                 {categoryOf(product.category).label} · {inr(product.price)}
+                {product.saleActive ? <span className="line-through"> {inr(product.basePrice ?? 0)}</span> : null}
               </p>
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <button
@@ -555,6 +617,43 @@ function Desk() {
           </li>
         ))}
       </ul>
+
+      {archived.length > 0 && (
+        <details className="mt-6 rounded-3xl bg-card p-4">
+          <summary className="cursor-pointer text-sm font-medium">Archived pieces ({archived.length})</summary>
+          <ul className="mt-3 divide-y divide-ink/10">
+            {archived.map((product) => (
+              <li key={product.id} className="flex items-center gap-3 py-3">
+                <img src={product.image} alt="" className="h-10 w-10 rounded-xl object-cover opacity-60" />
+                <span className="min-w-0 flex-1 truncate text-sm">{product.name}</span>
+                <button type="button" onClick={() => void restoreProduct({ data: product.id }).then(refresh)}
+                  className="h-9 rounded-full border border-ink/15 px-4 text-sm">
+                  Restore (stays hidden)
+                </button>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+
+      <details className="mt-6 rounded-3xl bg-card p-4">
+        <summary className="cursor-pointer text-sm font-medium">Stock history (last {movements.length})</summary>
+        {movements.length === 0 ? (
+          <p className="mt-3 text-sm text-mist">No stock changes recorded yet.</p>
+        ) : (
+          <ul className="mt-3 divide-y divide-ink/10 text-sm">
+            {movements.map((m) => (
+              <li key={m.id} className="flex flex-wrap items-baseline gap-x-3 py-2 tabular-nums">
+                <span className={m.delta < 0 ? "text-clay" : "text-emerald-700"}>{m.delta > 0 ? `+${m.delta}` : m.delta}</span>
+                <span className="min-w-0 flex-1 truncate">{m.name}</span>
+                <span className="text-mist">
+                  {m.reason === "order" ? `Order #${m.orderId}` : m.reason === "order_rollback" ? `Cancelled #${m.orderId}` : m.reason === "restock" ? "Restock" : "Owner edit"} · now {m.stockAfter}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </details>
 
       <h2 className="mt-10 font-display text-3xl">Customers</h2>
       <p className="mt-1 text-sm text-mist">
@@ -611,7 +710,7 @@ function Desk() {
         id: product.id,
         name: product.name,
         category: product.category,
-        price: product.price,
+        price: product.basePrice ?? product.price,
         stock: product.stock,
         blurb: product.blurb,
         image: product.image,
@@ -630,7 +729,19 @@ function keepExtras(product: Product) {
     images: product.images ?? [],
     description: product.description ?? "",
     showDescription: product.showDescription ?? true,
+    salePrice: product.salePrice ?? 0,
+    saleStartsAt: product.saleStartsAt ?? "",
+    saleEndsAt: product.saleEndsAt ?? "",
+    variants: product.variants ?? "",
   };
+}
+
+function toLocalInput(value: string | undefined) {
+  if (!value) return "";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 const inputClass =
@@ -928,6 +1039,7 @@ function OrdersTable({ orders }: { orders: ShopOrder[] }) {
                 <th className="px-3 py-2 text-right">Total</th>
                 <th className="px-3 py-2">Discount</th>
                 <th className="px-3 py-2">Items</th>
+                <th className="px-3 py-2">Status</th>
               </tr>
             </thead>
             <tbody>
@@ -973,6 +1085,9 @@ function OrdersTable({ orders }: { orders: ShopOrder[] }) {
                     </td>
                     <td className="px-3 py-2 text-mist">
                       {order.items.map((item) => `${item.qty} × ${item.name}`).join(", ")}
+                    </td>
+                    <td className="px-3 py-2">
+                      <OrderStatusSelect id={order.id} status={order.status ?? "placed"} />
                     </td>
                   </tr>
                 );
@@ -1504,5 +1619,66 @@ function AgentRow({
         </button>
       </td>
     </tr>
+  );
+}
+
+function SalePct({ base, sale, onSale }: { base: number; sale: number; onSale: (sale: number) => void }) {
+  if (base <= 0) return null;
+  const current = sale > 0 && sale < base ? Math.round(((base - sale) / base) * 100) : 0;
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+      <span className="text-mist">Quick % off:</span>
+      {[10, 20, 30, 40, 50].map((pct) => (
+        <button key={pct} type="button" onClick={() => onSale(Math.max(1, Math.round(base * (1 - pct / 100))))}
+          className={`h-8 rounded-full border px-3 ${current === pct ? "border-ink bg-ink text-paper" : "border-ink/15"}`}>
+          {pct}%
+        </button>
+      ))}
+      {current > 0 && <span className="text-mist">= {current}% off</span>}
+    </div>
+  );
+}
+
+function WaitingChip({ productId, count, onDone }: { productId: number; count: number; onDone: () => Promise<void> }) {
+  const [emails, setEmails] = useState<string[] | null>(null);
+  return (
+    <span className="inline-flex flex-wrap items-center gap-1.5">
+      <button type="button" className="rounded-full bg-ink px-2 py-0.5 text-paper"
+        onClick={() => void getStockAlerts({ data: productId }).then((rows) => setEmails(rows.map((r) => r.email)))}>
+        {count} want it back
+      </button>
+      {emails && (
+        <span className="font-normal">
+          {emails.join(", ")}{" "}
+          <button type="button" className="underline"
+            onClick={() => void markStockAlertsNotified({ data: productId }).then(onDone).then(() => setEmails(null))}>
+            Mark told
+          </button>
+        </span>
+      )}
+    </span>
+  );
+}
+
+function OrderStatusSelect({ id, status }: { id: number; status: OrderStatus }) {
+  const queryClient = useQueryClient();
+  const [value, setValue] = useState<OrderStatus>(status);
+  const [error, setError] = useState("");
+  return (
+    <span>
+      <select aria-label={`Status of order ${id}`} value={value} disabled={value === "cancelled"}
+        className="h-9 rounded-full border border-ink/15 bg-paper px-2 text-sm capitalize"
+        onChange={(event) => {
+          const next = event.target.value as OrderStatus;
+          if (next === "cancelled" && !window.confirm(`Cancel order #${id}? Its items go back into stock.`)) return;
+          setError("");
+          void setOrderStatus({ data: { id, status: next } })
+            .then(() => { setValue(next); return queryClient.invalidateQueries({ queryKey: ["studio"] }); })
+            .catch((err: unknown) => setError(err instanceof Error ? err.message : "Could not update."));
+        }}>
+        {ORDER_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+      </select>
+      {error && <span className="block text-xs text-clay">{error}</span>}
+    </span>
   );
 }

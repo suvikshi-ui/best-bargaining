@@ -14,11 +14,15 @@ export function ProductCard({ product }: { product: Product }) {
     ? { label: "SOLD OUT", tone: "bg-mist" }
     : off > 0
       ? { label: `${off}% OFF`, tone: "bg-clay" }
-      : product.badge === "new"
-        ? { label: "NEW", tone: "bg-ink" }
-        : product.badge === "best"
-          ? { label: "BESTSELLER", tone: "bg-ink" }
-          : null;
+      : product.badge === "limited"
+        ? { label: "LIMITED STOCK", tone: "bg-emerald-700" }
+        : product.badge === "fast"
+          ? { label: "FAST SELLING", tone: "bg-ink" }
+          : product.badge === "best"
+            ? { label: "BESTSELLER", tone: "bg-ink" }
+            : product.badge === "new"
+              ? { label: "NEW", tone: "bg-ink" }
+              : null;
 
   return (
     <article className="flex min-w-0 flex-col border border-ink/10 bg-paper">
@@ -73,9 +77,20 @@ export function ProductCard({ product }: { product: Product }) {
   );
 }
 
+/** Real counts only — thresholds, never invented urgency. */
 export function StockLine({ stock }: { stock: number }) {
   if (stock === 0) return <p className="text-xs text-mist">Sold out</p>;
-  if (stock <= 5) return <p className="text-xs font-medium text-clay">Only {stock} left</p>;
-  if (stock <= 20) return <p className="text-xs text-mist">Selling fast</p>;
+  if (stock <= 2)
+    return (
+      <p className="w-fit rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-800">
+        Hurry up, only {stock} left
+      </p>
+    );
+  if (stock <= 5)
+    return (
+      <p className="w-fit rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-800">
+        Only {stock} left
+      </p>
+    );
   return <p className="text-xs text-mist">In stock</p>;
 }
