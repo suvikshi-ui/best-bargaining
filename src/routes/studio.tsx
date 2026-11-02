@@ -252,6 +252,7 @@ function Desk() {
   }
 
   function edit(product: Product) {
+    setTab("add");
     setConfirmDelete(false);
     setMessage("");
     setDraft({
@@ -275,7 +276,7 @@ function Desk() {
       description: product.description ?? "",
       showDescription: product.showDescription ?? true,
     });
-    document.getElementById("desk-form")?.scrollIntoView({ block: "start" });
+    window.setTimeout(() => document.getElementById("desk-form")?.scrollIntoView({ block: "start" }), 50);
   }
 
   async function bump(product: Product, delta: number) {
