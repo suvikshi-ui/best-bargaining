@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
-import { Link, createFileRoute } from "@tanstack/react-router";
+import { Link, createFileRoute, stripSearchParams } from "@tanstack/react-router";
+import { SITE_NAME, siteUrl } from "@/lib/seo/site";
 import { useMemo } from "react";
 import { ProductCard } from "@/components/shop/product-card";
 import { HeroCarousel } from "@/components/shop/hero-carousel";
@@ -22,6 +23,17 @@ export const Route = createFileRoute("/")({
     cat: readCat(search.cat),
     q: readQuery(search.q),
   }),
+  // Keep the default shop URL clean ("/" instead of "/?cat=all&q=") so it matches the canonical.
+  search: { middlewares: [stripSearchParams({ cat: "all", q: "" })] },
+  head: ({ match }) => {
+    const cat = readCat((match.search as { cat?: unknown } | undefined)?.cat);
+    const url = cat === "all" ? siteUrl("/") : siteUrl(`/?cat=${encodeURIComponent(cat)}`);
+    const label = categoryOf(cat).label;
+    return {
+      meta: cat === "all" ? [] : [{ title: `${label} | ${SITE_NAME}` }],
+      links: [{ rel: "canonical", href: url }],
+    };
+  },
   loader: async () => {
     const [products, settings] = await Promise.all([listProducts(), getShopSettings()]);
     return { products, settings };

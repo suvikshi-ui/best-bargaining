@@ -388,8 +388,32 @@ function stripGrokExtensionsScript(html) {
   );
 }
 
+/** App-authored share metas opt out of the platform overwrite with `data-app-share`. */
+const APP_SHARE_ATTR = /\bdata-app-share\b/i;
+
+function shareKeyOf(tag) {
+  const attrs = [...String(tag).matchAll(/\b(?:property|name)\s*=\s*["']([^"']+)["']/gi)];
+  for (const match of attrs) {
+    const key = String(match[1]).toLowerCase();
+    if (SHARE_META_KEYS.has(key)) return key;
+  }
+  return "";
+}
+
+/** Share-meta keys the app set itself (kept as-is; the platform skips them). */
+export function appShareMetaKeys(html) {
+  const keys = new Set();
+  for (const match of String(html).matchAll(/<meta\b[^>]*>/gi)) {
+    if (!APP_SHARE_ATTR.test(match[0])) continue;
+    const key = shareKeyOf(match[0]);
+    if (key) keys.add(key);
+  }
+  return keys;
+}
+
 export function stripShareMetaTags(html) {
   return String(html).replace(/<meta\b[^>]*>/gi, (tag) => {
+    if (APP_SHARE_ATTR.test(tag) && shareKeyOf(tag)) return tag;
     const attrs = [...tag.matchAll(/\b(?:property|name)\s*=\s*["']([^"']+)["']/gi)];
     for (const match of attrs) {
       if (SHARE_META_KEYS.has(String(match[1]).toLowerCase())) return "";
@@ -445,6 +469,7 @@ export function injectGrokPwaHead(html, ctx = {}) {
     host,
     documentTitle,
   );
+  const appKeys = appShareMetaKeys(html);
   let next = stripShareMetaTags(html);
   if (!readGrokExtensionsEnabled()) next = stripGrokExtensionsScript(next);
 
@@ -458,7 +483,16 @@ export function injectGrokPwaHead(html, ctx = {}) {
 
   next = insertAfterHeadOpen(
     next,
-    grokOgHeadTags({ host, appName, site, documentTitle, cwd }).join(""),
+    grokOgHeadTags({ host, appName, site, documentTitle, cwd })
+      .filter((tag) => {
+        const key = shareKeyOf(tag);
+        if (!key) return true;
+        if (appKeys.has(key)) return false;
+        // An app-chosen og:image brings its own size; drop the platform card size.
+        if ((key === "og:image:width" || key === "og:image:height") && appKeys.has("og:image")) return false;
+        return true;
+      })
+      .join(""),
   );
 
   if (readGrokExtensionsEnabled() && !next.includes("/grok-app-builder/extensions.js")) {

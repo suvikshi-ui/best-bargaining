@@ -1,16 +1,68 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, createFileRoute } from "@tanstack/react-router";
+import { Link, createFileRoute, notFound } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { StockLine } from "@/components/shop/product-card";
 import { ShopShell } from "@/components/shop/shell";
 import { useCart } from "@/lib/shop/cart";
 import { getProduct, requestStockAlert } from "@/lib/shop/api";
-import { cardOff, categoryOf, inr, parseVariants } from "@/lib/shop/catalog";
+import { cardOff, categoryOf, inr, parseVariants, type Product } from "@/lib/shop/catalog";
+import { SITE_NAME, metaDescription, shareImage, siteUrl } from "@/lib/seo/site";
 
 export const Route = createFileRoute("/product/$id")({
-  loader: ({ params }) => getProduct({ data: Number(params.id) }),
+  loader: async ({ params }) => {
+    const product = await getProduct({ data: Number(params.id) });
+    // Deleted, archived, unpublished or unknown ids answer HTTP 404 (friendly body below).
+    if (!product) throw notFound();
+    return product;
+  },
+  head: ({ loaderData, params }) => {
+    if (!loaderData) {
+      return {
+        meta: [{ title: `Not on the shelf | ${SITE_NAME}` }, { name: "robots", content: "noindex, follow" }],
+      };
+    }
+    return productHead(loaderData, params.id);
+  },
+  notFoundComponent: NotOnShelf,
   component: Piece,
 });
+
+function productHead(product: Product, rawId: string) {
+  const url = siteUrl(`/product/${Number(product.id) || Number(rawId)}`);
+  const title = `${product.name} | ${SITE_NAME}`;
+  const category = categoryOf(product.category).label;
+  const description = metaDescription(
+    (product.showDescription !== false ? product.description?.trim() : "") ||
+      product.blurb?.trim() ||
+      `${product.name} for ${inr(product.price)} in ${category} at ${SITE_NAME}. Order online with WhatsApp support.`,
+  );
+  const image = shareImage(product.image) ?? shareImage((product.images ?? []).find((src) => shareImage(src)));
+  const share = { "data-app-share": "1" } as Record<string, string>;
+  return {
+    meta: [
+      { title },
+      { name: "description", content: description },
+      { property: "og:type", content: "product", ...share },
+      { property: "og:site_name", content: SITE_NAME, ...share },
+      { property: "og:title", content: title, ...share },
+      { property: "og:description", content: description, ...share },
+      { property: "og:url", content: url, ...share },
+      ...(image ? [{ property: "og:image", content: image, ...share }] : []),
+    ],
+    links: [{ rel: "canonical", href: url }],
+  };
+}
+
+function NotOnShelf() {
+  return (
+    <ShopShell>
+      <h1 className="font-display text-4xl">That piece is not on the shelf.</h1>
+      <Link to="/" search={{ cat: "all", q: "" }} className="mt-4 inline-flex h-11 items-center text-sm font-medium">
+        Back to the shop
+      </Link>
+    </ShopShell>
+  );
+}
 
 function Piece() {
   const initial = Route.useLoaderData();
@@ -26,16 +78,7 @@ function Piece() {
   const [qty, setQty] = useState(1);
   const [held, setHeld] = useState(false);
 
-  if (!product) {
-    return (
-      <ShopShell>
-        <h1 className="font-display text-4xl">That piece is not on the shelf.</h1>
-        <Link to="/" search={{ cat: "all", q: "" }} className="mt-4 inline-flex h-11 items-center text-sm font-medium">
-          Back to the shop
-        </Link>
-      </ShopShell>
-    );
-  }
+  if (!product) return <NotOnShelf />;
 
   const category = categoryOf(product.category);
   const gone = product.stock <= 0;
